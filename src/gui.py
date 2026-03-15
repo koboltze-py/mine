@@ -633,6 +633,96 @@ class BerichtErfindenDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+
+    _LIGHT_QSS = """
+        QMainWindow, QWidget {
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+        }
+        QTabWidget::pane { border: 1px solid #c0c0c0; background: #f5f5f5; }
+        QTabBar::tab {
+            background: #ddd; color: #1a1a1a;
+            padding: 6px 16px; border-radius: 4px 4px 0 0;
+        }
+        QTabBar::tab:selected { background: #f5f5f5; font-weight: bold; }
+        QPushButton {
+            background-color: #e0e0e0; color: #1a1a1a;
+            border: 1px solid #aaa; border-radius: 4px;
+            padding: 4px 10px;
+        }
+        QPushButton:hover { background-color: #d0d0d0; }
+        QPushButton:pressed { background-color: #bbb; }
+        QLineEdit, QTextEdit, QSpinBox, QComboBox {
+            background-color: #ffffff; color: #1a1a1a;
+            border: 1px solid #aaa; border-radius: 3px; padding: 2px 4px;
+        }
+        QGroupBox {
+            border: 1px solid #bbb; border-radius: 5px;
+            margin-top: 8px; padding-top: 4px;
+            color: #1a1a1a;
+        }
+        QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+        QTableWidget {
+            background-color: #fff; color: #1a1a1a;
+            gridline-color: #ddd;
+        }
+        QHeaderView::section {
+            background-color: #e8e8e8; color: #1a1a1a;
+            border: 1px solid #ccc; padding: 4px;
+        }
+        QScrollBar:vertical { background: #e0e0e0; width: 10px; }
+        QScrollBar::handle:vertical { background: #aaa; border-radius: 5px; }
+        QLabel { color: #1a1a1a; }
+        QCheckBox { color: #1a1a1a; }
+        QSplitter::handle { background: #ccc; }
+    """
+
+    _DARK_QSS = """
+        QMainWindow, QWidget {
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+        }
+        QTabWidget::pane { border: 1px solid #45475a; background: #1e1e2e; }
+        QTabBar::tab {
+            background: #313244; color: #cdd6f4;
+            padding: 6px 16px; border-radius: 4px 4px 0 0;
+        }
+        QTabBar::tab:selected { background: #1e1e2e; font-weight: bold; color: #cba6f7; }
+        QPushButton {
+            background-color: #313244; color: #cdd6f4;
+            border: 1px solid #45475a; border-radius: 4px;
+            padding: 4px 10px;
+        }
+        QPushButton:hover { background-color: #45475a; }
+        QPushButton:pressed { background-color: #585b70; }
+        QLineEdit, QTextEdit, QSpinBox, QComboBox {
+            background-color: #313244; color: #cdd6f4;
+            border: 1px solid #45475a; border-radius: 3px; padding: 2px 4px;
+        }
+        QGroupBox {
+            border: 1px solid #45475a; border-radius: 5px;
+            margin-top: 8px; padding-top: 4px;
+            color: #cba6f7;
+        }
+        QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+        QTableWidget {
+            background-color: #181825; color: #cdd6f4;
+            gridline-color: #45475a;
+        }
+        QHeaderView::section {
+            background-color: #313244; color: #cdd6f4;
+            border: 1px solid #45475a; padding: 4px;
+        }
+        QTableWidget::item:selected { background-color: #45475a; color: #cdd6f4; }
+        QScrollBar:vertical { background: #313244; width: 10px; }
+        QScrollBar::handle:vertical { background: #585b70; border-radius: 5px; }
+        QLabel { color: #cdd6f4; }
+        QCheckBox { color: #cdd6f4; }
+        QSplitter::handle { background: #45475a; }
+        QDialog { background-color: #1e1e2e; color: #cdd6f4; }
+        QScrollArea { background-color: #1e1e2e; }
+    """
+
     def __init__(self, db_handler, claude_handler, report_generator, beispiele_pfad: str = "data/beispiele"):
         super().__init__()
 
@@ -640,12 +730,24 @@ class MainWindow(QMainWindow):
         self.claude = claude_handler
         self.report_gen = report_generator
         self.beispiele_pfad = beispiele_pfad
+        self._dark_mode = False
 
         self.setWindowTitle("Einsatzbericht Manager")
         self.setMinimumSize(1000, 700)
 
         self.setup_ui()
         self.load_berichte()
+        # Apply light theme on start
+        QApplication.instance().setStyleSheet(self._LIGHT_QSS)
+
+    def toggle_theme(self):
+        self._dark_mode = not self._dark_mode
+        if self._dark_mode:
+            QApplication.instance().setStyleSheet(self._DARK_QSS)
+            self._theme_btn.setText("☀️  Heller Modus")
+        else:
+            QApplication.instance().setStyleSheet(self._LIGHT_QSS)
+            self._theme_btn.setText("🌙  Dunkler Modus")
     
     def setup_ui(self):
         """Erstellt die Benutzeroberfläche"""
@@ -655,14 +757,23 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
         
-        # Titel
+        # Titel + Theme-Toggle
+        title_row = QHBoxLayout()
         title_label = QLabel("Einsatzbericht Manager")
         title_font = QFont()
         title_font.setPointSize(18)
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(title_label)
+        title_row.addStretch()
+        title_row.addWidget(title_label)
+        title_row.addStretch()
+        self._theme_btn = QPushButton("🌙  Dunkler Modus")
+        self._theme_btn.setFixedWidth(160)
+        self._theme_btn.setToolTip("Zwischen hellem und dunklem Modus wechseln")
+        self._theme_btn.clicked.connect(self.toggle_theme)
+        title_row.addWidget(self._theme_btn)
+        main_layout.addLayout(title_row)
 
         # Export-Schrifteinstellungen (gilt für alle Exporte)
         font_bar = QHBoxLayout()

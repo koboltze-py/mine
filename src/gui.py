@@ -701,6 +701,18 @@ class MainWindow(QMainWindow):
         QScrollBar::handle:vertical { background: #aaa; border-radius: 5px; }
         QLabel { color: #1a1a1a; }
         QCheckBox { color: #1a1a1a; }
+        QGroupBox::indicator {
+            width: 14px; height: 14px;
+            border: 2px solid #555; border-radius: 2px;
+            background-color: #ffffff;
+        }
+        QGroupBox::indicator:checked { background-color: #1976D2; border-color: #1565C0; }
+        QCheckBox::indicator {
+            width: 14px; height: 14px;
+            border: 2px solid #555; border-radius: 2px;
+            background-color: #ffffff;
+        }
+        QCheckBox::indicator:checked { background-color: #1976D2; border-color: #1565C0; }
         QSplitter::handle { background: #ccc; }
     """
 
@@ -745,6 +757,18 @@ class MainWindow(QMainWindow):
         QScrollBar::handle:vertical { background: #585b70; border-radius: 5px; }
         QLabel { color: #cdd6f4; }
         QCheckBox { color: #cdd6f4; }
+        QGroupBox::indicator {
+            width: 14px; height: 14px;
+            border: 2px solid #888; border-radius: 2px;
+            background-color: #313244;
+        }
+        QGroupBox::indicator:checked { background-color: #89b4fa; border-color: #74c7ec; }
+        QCheckBox::indicator {
+            width: 14px; height: 14px;
+            border: 2px solid #888; border-radius: 2px;
+            background-color: #313244;
+        }
+        QCheckBox::indicator:checked { background-color: #89b4fa; border-color: #74c7ec; }
         QSplitter::handle { background: #45475a; }
         QDialog { background-color: #1e1e2e; color: #cdd6f4; }
         QScrollArea { background-color: #1e1e2e; }
@@ -995,7 +1019,8 @@ class MainWindow(QMainWindow):
         # Komplexe Schemata mit Sub-Feldern
         self.schema_widgets = {}  # name -> SchemaWidget
         komplex_defs = [
-            ("ABCDE", [
+            ("xABCDE", [
+                ("x", "X – Exsanguination", "z.B. Tourniquet, Wundpacking, Blutung gestillt / keine sichtbaren Blutungen"),
                 ("a", "A – Atemweg", "frei / verlegt / gesichert mit Larynxtubus / Intubation"),
                 ("b", "B – Beatmung / SpO\u2082 / AF", "z.B. SpO\u2082 94%, AF 18/min, vesikuläres Atemgeräusch bds."),
                 ("c", "C – Kreislauf / RR / HF", "z.B. RR 130/85 mmHg, HF 92/min, rhythmisch"),
@@ -1118,9 +1143,16 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QScrollArea
         dlg = QDialog(self)
         dlg.setWindowTitle("Schemata bearbeiten")
-        dlg.resize(740, 620)
+        dlg.resize(740, 660)
         dlg_layout = QVBoxLayout(dlg)
-
+        dlg_layout.setSpacing(8)
+        _hint = QLabel("\u270f\ufe0f\u00a0 Schemata direkt bearbeiten – Änderungen mit <b>Übernehmen</b> speichern.")
+        if self._dark_mode:
+            _hint.setStyleSheet("background:#1a3a5c;color:#90caf9;border:1px solid #1565c0;border-radius:4px;padding:6px 10px;")
+        else:
+            _hint.setStyleSheet("background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;border-radius:4px;padding:6px 10px;")
+        _hint.setWordWrap(True)
+        dlg_layout.addWidget(_hint)
         # Current abcde_json → dict
         current = _json.loads(self._edit_abcde_json or '{}')
 
@@ -1203,8 +1235,11 @@ class MainWindow(QMainWindow):
         dlg_layout.addWidget(scroll)
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Übernehmen")
+        ok_btn = QPushButton("✔\u00a0 Übernehmen")
+        ok_btn.setMinimumHeight(34)
+        ok_btn.setStyleSheet("QPushButton{background:#2e7d32;color:#fff;font-weight:bold;border-radius:5px;padding:6px 20px;border:none;}QPushButton:hover{background:#388e3c;}")
         cancel_btn = QPushButton("Abbrechen")
+        cancel_btn.setMinimumHeight(34)
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(dlg.accept)
         cancel_btn.clicked.connect(dlg.reject)
@@ -1243,8 +1278,16 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QScrollArea
         dlg = QDialog(self)
         dlg.setWindowTitle("Vitalwerte / Messwerte – Vollbild bearbeiten")
-        dlg.resize(520, 480)
+        dlg.resize(520, 520)
         dlg_layout = QVBoxLayout(dlg)
+        dlg_layout.setSpacing(8)
+        _hint = QLabel("\u270f\ufe0f\u00a0 Werte direkt eingeben – Änderungen mit <b>Übernehmen</b> speichern.")
+        if self._dark_mode:
+            _hint.setStyleSheet("background:#1a3a5c;color:#90caf9;border:1px solid #1565c0;border-radius:4px;padding:6px 10px;")
+        else:
+            _hint.setStyleSheet("background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;border-radius:4px;padding:6px 10px;")
+        _hint.setWordWrap(True)
+        dlg_layout.addWidget(_hint)
         temp_widget = VitalwerteWidget()
         temp_widget.set_vitalwerte(self.edit_vitalwerte_widget.get_vitalwerte())
         # In ScrollArea einbetten
@@ -1253,8 +1296,11 @@ class MainWindow(QMainWindow):
         scroll.setWidget(temp_widget)
         dlg_layout.addWidget(scroll)
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Übernehmen")
+        ok_btn = QPushButton("✔\u00a0 Übernehmen")
+        ok_btn.setMinimumHeight(34)
+        ok_btn.setStyleSheet("QPushButton{background:#2e7d32;color:#fff;font-weight:bold;border-radius:5px;padding:6px 20px;border:none;}QPushButton:hover{background:#388e3c;}")
         cancel_btn = QPushButton("Abbrechen")
+        cancel_btn.setMinimumHeight(34)
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(dlg.accept)
         cancel_btn.clicked.connect(dlg.reject)
@@ -1272,6 +1318,14 @@ class MainWindow(QMainWindow):
         dlg.setWindowTitle(title)
         dlg.resize(980, 680)
         dlg_layout = QVBoxLayout(dlg)
+        dlg_layout.setSpacing(8)
+        _hint = QLabel("\u270f\ufe0f\u00a0 Text direkt bearbeiten – Änderungen mit <b>Übernehmen</b> speichern.")
+        if self._dark_mode:
+            _hint.setStyleSheet("background:#1a3a5c;color:#90caf9;border:1px solid #1565c0;border-radius:4px;padding:6px 10px;")
+        else:
+            _hint.setStyleSheet("background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;border-radius:4px;padding:6px 10px;")
+        _hint.setWordWrap(True)
+        dlg_layout.addWidget(_hint)
         editor = QTextEdit()
         editor.setPlainText(textedit.toPlainText())
         font = textedit.font()
@@ -1279,8 +1333,11 @@ class MainWindow(QMainWindow):
         editor.setFont(font)
         dlg_layout.addWidget(editor)
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Übernehmen")
+        ok_btn = QPushButton("✔\u00a0 Übernehmen")
+        ok_btn.setMinimumHeight(34)
+        ok_btn.setStyleSheet("QPushButton{background:#2e7d32;color:#fff;font-weight:bold;border-radius:5px;padding:6px 20px;border:none;}QPushButton:hover{background:#388e3c;}")
         cancel_btn = QPushButton("Abbrechen")
+        cancel_btn.setMinimumHeight(34)
         ok_btn.setDefault(True)
         ok_btn.clicked.connect(dlg.accept)
         cancel_btn.clicked.connect(dlg.reject)
@@ -1351,8 +1408,9 @@ class MainWindow(QMainWindow):
         _kontext_vbox.setContentsMargins(0, 0, 0, 0)
         _kontext_vbox.setSpacing(2)
         _kontext_vbox.addWidget(self.edit_kontext)
-        _kontext_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
-        _kontext_popup_btn.setMaximumWidth(180)
+        _kontext_popup_btn = QPushButton("✏\ufe0f  Kontext bearbeiten")
+        _kontext_popup_btn.setMaximumWidth(220)
+        _kontext_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
         _kontext_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_kontext, "Kontext bearbeiten"))
         _kontext_vbox.addWidget(_kontext_popup_btn)
@@ -1369,7 +1427,8 @@ class MainWindow(QMainWindow):
         _inhalt_header = QHBoxLayout()
         _inhalt_header.addWidget(QLabel("<b>Inhalt:</b>"))
         _inhalt_header.addStretch()
-        _inhalt_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _inhalt_popup_btn = QPushButton("✏\ufe0f  In Vollbild bearbeiten")
+        _inhalt_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
         _inhalt_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_inhalt, "Inhalt bearbeiten – Vollbild"))
         _inhalt_header.addWidget(_inhalt_popup_btn)
@@ -1379,9 +1438,10 @@ class MainWindow(QMainWindow):
 
         # ── Schemata ─────────────────────────────────────────────────
         _schema_header = QHBoxLayout()
-        _schema_header.addWidget(QLabel("<b>Schemata (ABCDE / OPQRST / SAMPLER …):</b>"))
+        _schema_header.addWidget(QLabel("<b>Schemata (xABCDE / OPQRST / SAMPLER …):</b>"))
         _schema_header.addStretch()
-        _schema_popup_btn = QPushButton("⛶  Schemata bearbeiten")
+        _schema_popup_btn = QPushButton("✏\ufe0f  Schemata bearbeiten")
+        _schema_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
         _schema_popup_btn.clicked.connect(self._popup_schema_edit)
         _schema_header.addWidget(_schema_popup_btn)
         layout.addLayout(_schema_header)
@@ -1401,7 +1461,8 @@ class MainWindow(QMainWindow):
         _vw_header = QHBoxLayout()
         _vw_header.addWidget(QLabel("<b>Vitalwerte / Messwerte:</b>"))
         _vw_header.addStretch()
-        _vw_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _vw_popup_btn = QPushButton("✏\ufe0f  Vitalwerte bearbeiten")
+        _vw_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
         _vw_popup_btn.clicked.connect(self._popup_vitalwerte)
         _vw_header.addWidget(_vw_popup_btn)
         layout.addLayout(_vw_header)
@@ -1414,7 +1475,8 @@ class MainWindow(QMainWindow):
         _refl_ki_btn.setToolTip("Stichwörter → Claude schreibt vollständige Reflexion")
         _refl_ki_btn.clicked.connect(self._ki_reflexion_edit)
         _refl_header.addWidget(_refl_ki_btn)
-        _refl_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _refl_popup_btn = QPushButton("✏\ufe0f  Reflexion bearbeiten")
+        _refl_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
         _refl_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_reflexion, "Einsatzreflexion bearbeiten – Vollbild"))
         _refl_header.addWidget(_refl_popup_btn)

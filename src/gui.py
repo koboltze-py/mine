@@ -969,6 +969,34 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(new_report_widget, "Neuer Bericht")
     
+    def _popup_vitalwerte(self):
+        """Öffnet einen großen Dialog zum Bearbeiten der Vitalwerte."""
+        from PySide6.QtWidgets import QScrollArea
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Vitalwerte / Messwerte – Vollbild bearbeiten")
+        dlg.resize(520, 480)
+        dlg_layout = QVBoxLayout(dlg)
+        temp_widget = VitalwerteWidget()
+        temp_widget.set_vitalwerte(self.edit_vitalwerte_widget.get_vitalwerte())
+        # In ScrollArea einbetten
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(temp_widget)
+        dlg_layout.addWidget(scroll)
+        btn_row = QHBoxLayout()
+        ok_btn = QPushButton("Übernehmen")
+        cancel_btn = QPushButton("Abbrechen")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch()
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(cancel_btn)
+        dlg_layout.addLayout(btn_row)
+        if dlg.exec() == QDialog.Accepted:
+            self.edit_vitalwerte_widget.clear()
+            self.edit_vitalwerte_widget.set_vitalwerte(temp_widget.get_vitalwerte())
+
     def _popup_text_edit(self, textedit: QTextEdit, title: str):
         """Öffnet einen großen Dialog zum Bearbeiten eines QTextEdit-Feldes."""
         dlg = QDialog(self)
@@ -1077,8 +1105,20 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.edit_inhalt)
 
         self.edit_vitalwerte_widget = VitalwerteWidget()
-        self.edit_vitalwerte_widget.setMaximumHeight(320)
-        layout.addWidget(self.edit_vitalwerte_widget)
+        # in ScrollArea einbetten damit alle Felder erreichbar sind
+        _vw_scroll = QScrollArea()
+        _vw_scroll.setWidgetResizable(True)
+        _vw_scroll.setWidget(self.edit_vitalwerte_widget)
+        _vw_scroll.setMinimumHeight(200)
+        _vw_scroll.setMaximumHeight(280)
+        _vw_header = QHBoxLayout()
+        _vw_header.addWidget(QLabel("<b>Vitalwerte / Messwerte:</b>"))
+        _vw_header.addStretch()
+        _vw_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _vw_popup_btn.clicked.connect(self._popup_vitalwerte)
+        _vw_header.addWidget(_vw_popup_btn)
+        layout.addLayout(_vw_header)
+        layout.addWidget(_vw_scroll)
 
         _refl_header = QHBoxLayout()
         _refl_header.addWidget(QLabel("<b>Einsatzreflexion:</b>"))

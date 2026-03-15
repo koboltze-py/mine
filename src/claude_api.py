@@ -78,21 +78,32 @@ class ClaudeAPIHandler:
                                     text = ' '.join(t.strip() for t in _re.findall(r'>([^<]+)<', content) if t.strip())
                             else:
                                 # Neues Pages-Format (post-2013): .iwa Binärdateien
-                                # Textfragmente mittels Byte-Scan extrahieren
+                                # Textfragmente mittels Byte-Scan extrahieren (nur Dateien die Fließtext enthalten)
                                 import re as _re2
                                 parts = []
+                                # IWA-Dateien die bekanntermaßen keinen lesbaren Text enthalten überspringen
+                                _SKIP_IWA = ('stylesheet', 'chart', 'table', 'thumbnail',
+                                             'preview', 'annotation', 'datalist', 'data-list')
                                 for iwa_name in names:
                                     if not iwa_name.endswith('.iwa'):
                                         continue
+                                    lower_iwa = iwa_name.lower()
+                                    if any(skip in lower_iwa for skip in _SKIP_IWA):
+                                        continue
                                     raw = zf.read(iwa_name)
+                                    # Nur UTF-8-Sequenzen extrahieren die mindestens ein Leerzeichen enthalten
+                                    # (echte Sätze bestehen aus mehreren durch Leerzeichen getrennten Wörtern)
                                     for m in _re2.finditer(
-                                        rb'(?:[A-Za-z\xc3\xc4-\xc5\xe2\xef][\x20-\x7e\x80-\xbf]{3,}){2,}',
+                                        rb'[\x20-\x7e\xc0-\xff]{12,}',
                                         raw
                                     ):
                                         s = m.group().decode('utf-8', 'replace').strip()
+                                        # Mindestens 2 Leerzeichen → mindestens 3 Wörter
+                                        if s.count(' ') < 2:
+                                            continue
                                         s = _re2.sub(r'[^\w\s\.\,\!\?\-\:\;\(\)äöüÄÖÜß]', ' ', s)
                                         s = _re2.sub(r'\s{2,}', ' ', s).strip()
-                                        if len(s) >= 8 and _re2.search(r'[a-zA-ZäöüÄÖÜß]{4}', s):
+                                        if len(s) >= 12 and _re2.search(r'[a-zA-ZäöüÄÖÜß]{4}', s):
                                             parts.append(s)
                                 text = '\n'.join(parts)
                     except zipfile.BadZipFile:
@@ -106,33 +117,61 @@ class ClaudeAPIHandler:
                 pass
         return beispiele
 
-    # Metadaten-Wörter die beim IWA-Scan entstehen und herausgefiltert werden sollen
-    _METADATA_WOERTER = frozenset([
-        'januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august',
-        'september', 'oktober', 'november', 'dezember', 'jan', 'feb', 'mrz',
-        'apr', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dez',
-        'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag',
-        'gregorian', 'latn', 'de_de', 'de_dep', 'iso', 'isob', 'blank',
-        'application', 'standard', 'toc', 'quartal', 'chr',
-    ])
+    # Regex-Muster die typische Apple-Pages-Metadaten und Formatierungs-IDs matchen
+    _PAGES_JUNK_RE = None  # wird beim ersten Aufruf initialisiert
+
+    @classmethod
+    def _get_junk_re(cls):
+        import re as _re
+        if cls._PAGES_JUNK_RE is None:
+            cls._PAGES_JUNK_RE = _re.compile(
+                r'paragraphStyle|shapestyle|categoryaxis|referenceLine|valueaxi|'
+                r'footerRow|footerCol|headerColumn|headerRow|stickyComment|'
+                r'tocentry|svgimport|drawingline|HelveticaN|DocumentStyle|'
+                r'ViewState|StorageBucket|TPMac|TSC[A-Z]|TaePP|'
+                r'tile_paper|bullet_circle|_theme\b|hardcover|'
+                r'Directional\s+Key|Fill\s+(Right|Left|Center)|Formal\s+Shadow|'
+                r'Note\s+Tak|DataList|AnnotationAuthor|'
+                r'\w+[-_]\d+[-_]\w|'   # Bezeichner wie chart-1-paragraphStyle
+                r'\w+_\d{1,3}\b|'      # Bezeichner wie paragraphStyle_19
+                r'\.[a-z]{2,4}[\s\)]|' # Dateiendungen wie .jpg .png .pdf
+                r'[A-Za-z]+:[a-z]{0,3}[A-Z]',  # Fontname-Suffixe wie HelveticaNeue:bW
+                _re.IGNORECASE
+            )
+        return cls._PAGES_JUNK_RE
 
     def _bereinige_zeilen(self, text: str) -> str:
-        """Entfernt Metadaten-/Formatzeilen aus IWA-extrahiertem Text."""
+        """Entfernt Apple-Pages-Metadaten und technische Bezeichner aus IWA-extrahiertem Text."""
         import re as _re
+        junk_re = self._get_junk_re()
         gute = []
         for zeile in text.splitlines():
             z = zeile.strip()
-            if not z or len(z) < 6:
+            if not z or len(z) < 8:
                 continue
-            # Reine Datum-/Formatstrings überspringen (dd.MM.yy, MMMM, #,##0 …)
-            if _re.fullmatch(r'[\w\.\#,\s:;\-/%]+', z) and not _re.search(r'[a-zA-ZäöüÄÖÜß]{5}', z):
+            # Bekannte Apple-Metadaten-Muster sofort verwerfen
+            if junk_re.search(z):
                 continue
-            # Zeilen die nur aus Metadaten-Wörtern bestehen überspringen
-            woerter = set(w.lower() for w in _re.findall(r'[a-zA-ZäöüÄÖÜß]+', z))
-            if woerter and woerter.issubset(self._METADATA_WOERTER):
+            # Reine Datum-/Zahlen-/Formatstrings ohne echtes Wort überspringen
+            if _re.fullmatch(r'[\w\.\#,\s:;\-/%±°]+', z) and not _re.search(r'[a-zA-ZäöüÄÖÜß]{5}', z):
                 continue
-            # Mindestens ein echtes Wort mit ≥4 Buchstaben
-            if not _re.search(r'[a-zA-ZäöüÄÖÜß]{4}', z):
+            # CamelCase-Bezeichner (mehrere Großbuchstaben in einem Wort ohne Leerzeichen → technisch)
+            woerter = z.split()
+            if len(woerter) == 1:
+                gross = _re.findall(r'[A-Z]', z)
+                if len(gross) > 2:  # einzelnes Wort mit 3+ Großbuchstaben = CamelCase-ID
+                    continue
+            # Mindestens 3 durch Leerzeichen getrennte Tokens (echte Sätze oder Abschnittsköpfe)
+            if len(woerter) < 3:
+                # Ausnahme: Abschnittsüberschriften (kurzes Wort + Doppelpunkt, z.B. "Alarmierung:")
+                ist_header = (len(woerter) <= 2
+                              and _re.fullmatch(r'[A-ZÄÖÜ][a-zA-ZäöüÄÖÜß\s/]+:?', z)
+                              and len(z) <= 30)
+                if not ist_header:
+                    continue
+            # Buchstabenanteil muss dominant sein (kein Zeichensalat)
+            buchstaben = sum(1 for c in z if c.isalpha())
+            if buchstaben / len(z) < 0.55:
                 continue
             gute.append(z)
         return '\n'.join(gute)
@@ -201,7 +240,14 @@ class ClaudeAPIHandler:
         if rettungsmittel:
             details.append(f"Beteiligte Rettungsmittel: {rettungsmittel}")
         if medikamente:
-            details.append(f"Verabreichte Medikamente: {medikamente}")
+            # Medikamente als nummerierte Liste formatieren
+            med_lines = [l.strip() for l in medikamente.splitlines() if l.strip()]
+            if med_lines:
+                med_block = "\n".join(f"  {i+1}. {l}" for i, l in enumerate(med_lines))
+                details.append(f"Verabreichte Medikamente (im Bericht als eigene Sektion mit je Medikament: "
+                                f"Arzneimittelgruppe, Indikation, Kontraindikation, UAW, Dosierung/Durchführung):\n{med_block}")
+            else:
+                details.append(f"Verabreichte Medikamente: {medikamente}")
         if schemata:
             schema_text = "\n".join(f"  - {s}" for s in schemata)
             details.append(f"Schemata (im Bericht vollständig ausführen, eingetragene Befunde verwenden):\n{schema_text}")
@@ -218,8 +264,14 @@ class ClaudeAPIHandler:
                 f"  • Gliederung / Abschnittsüberschriften\n"
                 f"  • Fachbegriffe und Abkürzungen (RTW, NEF, Pat., GCS etc.)\n"
                 f"  • Detailtiefe und Erzählweise\n"
-                f"NICHT übernehmen: Namen, Orte, Diagnosen, Medikamente aus den Vorlagen.\n\n"
-                f"EINSATZ-DATEN (diese konkret verwenden):\n{detail_block}\n\n"
+                f"NICHT übernehmen: Namen, Orte, Diagnosen, Medikamente aus den Vorlagen.\n\n"                f"FORMATIERUNGSREGELN (zwingend einhalten):\n"
+                f"  - KEIN Markdown: keine Sternchen (*/**), keine #-Überschriften, kein __Fett__\n"
+                f"  - Abschnittsüberschriften als normalen Text ohne Sonderzeichen\n"
+                f"  - Schema-Einträge im Format: Buchstabe= Text  (Beispiel: 'A= Atemweg frei')\n"
+                f"  - Messwerte im Format: Kürzel- Wert  (Beispiel: 'RR- 130/85; HF- 92')\n"
+                f"  - Fließtext ohne Aufzählungszeichen außer für Medikamentenlisten\n"
+                f"  - Jedes Medikament bekommt eine eigene Sektion mit: Arzneimittelgruppe, Indikation,\n"
+                f"    Kontraindikation, Unerwünschte Arzneimittelwirkung (UAW), Dosierung/Durchführung\n\n"                f"EINSATZ-DATEN (diese konkret verwenden):\n{detail_block}\n\n"
                 f"{seiten_info}\n\n"
                 f"Erfinde realistische, stimmige Details für alles was nicht angegeben wurde "
                 f"(Straße, Hausnummer, Patientenalter/-geschlecht, Vitalwerte, Verlauf)."
@@ -227,6 +279,13 @@ class ClaudeAPIHandler:
         else:
             prompt = (
                 f"Erstelle einen professionellen Einsatzbericht für den Rettungsdienst.\n\n"
+                f"FORMATIERUNGSREGELN (zwingend einhalten):\n"
+                f"  - KEIN Markdown: keine Sternchen (*/**), keine #-Überschriften, kein __Fett__\n"
+                f"  - Abschnittsüberschriften als normalen Text ohne Sonderzeichen\n"
+                f"  - Schema-Einträge im Format: Buchstabe= Text  (Beispiel: 'A= Atemweg frei')\n"
+                f"  - Messwerte im Format: Kürzel- Wert  (Beispiel: 'RR- 130/85; HF- 92')\n"
+                f"  - Jedes Medikament bekommt eine eigene Sektion mit: Arzneimittelgruppe, Indikation,\n"
+                f"    Kontraindikation, UAW, Dosierung/Durchführung\n\n"
                 f"EINSATZ-DATEN:\n{detail_block}\n\n"
                 f"{seiten_info}\n\n"
                 f"Struktur: Alarmierung (Uhrzeit/Stichwort), Einsatzort, Lage bei Ankunft, "

@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QTableWidget, QTableWidgetItem, QMessageBox,
                               QDialog, QDialogButtonBox, QFormLayout, QTabWidget,
                               QFileDialog, QProgressDialog, QApplication, QSpinBox,
-                              QComboBox, QGroupBox, QCheckBox, QScrollArea)
+                              QComboBox, QGroupBox, QCheckBox, QScrollArea, QSplitter)
 from PySide6.QtCore import Qt, QThread, Signal, QDate, QTime
 from PySide6.QtWidgets import QDateEdit, QTimeEdit
 from PySide6.QtGui import QFont, QIcon
@@ -170,6 +170,195 @@ class BerichtBearbeitenDialog(QDialog):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+class RettungsmittelListWidget(QWidget):
+    """Dynamische Liste für beteiligte Rettungsmittel."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._vlayout = QVBoxLayout()
+        self._vlayout.setContentsMargins(0, 0, 0, 0)
+        self._vlayout.setSpacing(2)
+        self.setLayout(self._vlayout)
+        self._rows = []  # list of (QLineEdit, QWidget)
+
+        add_btn = QPushButton("+ Rettungsmittel hinzufügen")
+        add_btn.setFixedWidth(220)
+        add_btn.clicked.connect(lambda: self.add_row())
+        self._vlayout.addWidget(add_btn)
+        self.add_row()
+
+    def add_row(self, value=""):
+        row_w = QWidget()
+        row_l = QHBoxLayout()
+        row_l.setContentsMargins(0, 0, 0, 0)
+        row_l.setSpacing(4)
+        row_w.setLayout(row_l)
+        edit = QLineEdit()
+        edit.setPlaceholderText("z.B. RTW 2, NEF, FW Löschzug")
+        edit.setText(value)
+        rm_btn = QPushButton("✕")
+        rm_btn.setFixedSize(24, 24)
+        rm_btn.clicked.connect(lambda: self._remove_row(row_w))
+        row_l.addWidget(edit)
+        row_l.addWidget(rm_btn)
+        self._vlayout.insertWidget(self._vlayout.count() - 1, row_w)
+        self._rows.append((edit, row_w))
+
+    def _remove_row(self, row_w):
+        for i, (e, w) in enumerate(self._rows):
+            if w is row_w:
+                self._rows.pop(i)
+                self._vlayout.removeWidget(w)
+                w.deleteLater()
+                break
+
+    def get_text(self) -> str:
+        parts = [e.text().strip() for e, _ in self._rows if e.text().strip()]
+        return ", ".join(parts)
+
+    def set_text(self, text: str):
+        import re as _re
+        self.clear()
+        items = [t.strip() for t in _re.split(r'[,;]+', text) if t.strip()]
+        for item in items:
+            self.add_row(item)
+
+    def clear(self):
+        for _, w in self._rows:
+            self._vlayout.removeWidget(w)
+            w.deleteLater()
+        self._rows.clear()
+        self.add_row()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+class MedikamentListWidget(QWidget):
+    """Dynamische Liste für verabreichte Medikamente mit Dosis und Applikationsweg."""
+
+    APPLIKATIONEN = ["i.v.", "p.o.", "s.c.", "i.m.", "inhalativ",
+                     "sublingual", "rektal", "transdermal", "nasal", ""]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._vlayout = QVBoxLayout()
+        self._vlayout.setContentsMargins(0, 0, 0, 0)
+        self._vlayout.setSpacing(2)
+        self.setLayout(self._vlayout)
+        self._rows = []  # list of (name_edit, dosis_edit, app_combo, QWidget)
+
+        add_btn = QPushButton("+ Medikament hinzufügen")
+        add_btn.setFixedWidth(200)
+        add_btn.clicked.connect(lambda: self.add_row())
+        self._vlayout.addWidget(add_btn)
+        self.add_row()
+
+    def add_row(self, name="", dosis="", applikation="i.v."):
+        row_w = QWidget()
+        row_l = QHBoxLayout()
+        row_l.setContentsMargins(0, 0, 0, 0)
+        row_l.setSpacing(4)
+        row_w.setLayout(row_l)
+
+        name_edit = QLineEdit()
+        name_edit.setPlaceholderText("Medikament")
+        name_edit.setText(name)
+        name_edit.setMinimumWidth(140)
+
+        dosis_edit = QLineEdit()
+        dosis_edit.setPlaceholderText("Dosis")
+        dosis_edit.setText(dosis)
+        dosis_edit.setFixedWidth(90)
+
+        app_combo = QComboBox()
+        app_combo.addItems(self.APPLIKATIONEN)
+        app_combo.setEditable(True)
+        app_combo.setFixedWidth(110)
+        idx = app_combo.findText(applikation)
+        if idx >= 0:
+            app_combo.setCurrentIndex(idx)
+        else:
+            app_combo.setCurrentText(applikation)
+
+        rm_btn = QPushButton("✕")
+        rm_btn.setFixedSize(24, 24)
+        rm_btn.clicked.connect(lambda: self._remove_row(row_w))
+
+        row_l.addWidget(name_edit)
+        row_l.addWidget(dosis_edit)
+        row_l.addWidget(app_combo)
+        row_l.addWidget(rm_btn)
+
+        self._vlayout.insertWidget(self._vlayout.count() - 1, row_w)
+        self._rows.append((name_edit, dosis_edit, app_combo, row_w))
+
+    def _remove_row(self, row_w):
+        for i, (n, d, a, w) in enumerate(self._rows):
+            if w is row_w:
+                self._rows.pop(i)
+                self._vlayout.removeWidget(w)
+                w.deleteLater()
+                break
+
+    def get_medikamente(self) -> list:
+        """Gibt Liste von dicts zurück: [{'name', 'dosis', 'applikation'}]"""
+        result = []
+        for name_edit, dosis_edit, app_combo, _ in self._rows:
+            name = name_edit.text().strip()
+            if name:
+                result.append({
+                    'name': name,
+                    'dosis': dosis_edit.text().strip(),
+                    'applikation': app_combo.currentText().strip(),
+                })
+        return result
+
+    def get_text(self) -> str:
+        """Formatierte Medikamentenliste als einzelne Zeilen."""
+        parts = []
+        for m in self.get_medikamente():
+            s = m['name']
+            if m['dosis']:
+                s += f" {m['dosis']}"
+            if m['applikation']:
+                s += f" {m['applikation']}"
+            parts.append(s)
+        return "\n".join(parts)
+
+    def set_medikamente(self, value):
+        """Setzt Medikamente aus String, Liste von Strings oder Liste von Dicts."""
+        import re as _re
+        self.clear()
+        if isinstance(value, str):
+            items = [t.strip().lstrip('-').strip() for t in _re.split(r'[,\n]+', value) if t.strip()]
+            for item in items:
+                # Versuche "Name Dosis App" zu parsen (App am Ende wenn in APPLIKATIONEN)
+                parts = item.split()
+                app = ""
+                dosis = ""
+                name_parts = parts[:]
+                if parts and parts[-1] in self.APPLIKATIONEN:
+                    app = parts[-1]
+                    name_parts = parts[:-1]
+                if len(name_parts) >= 2:
+                    dosis = name_parts[-1]
+                    name_parts = name_parts[:-1]
+                self.add_row(name=" ".join(name_parts), dosis=dosis, applikation=app or "i.v.")
+        elif isinstance(value, list):
+            for m in value:
+                if isinstance(m, dict):
+                    self.add_row(m.get('name', ''), m.get('dosis', ''), m.get('applikation', 'i.v.'))
+                elif isinstance(m, str) and m.strip():
+                    self.add_row(name=m.strip())
+
+    def clear(self):
+        for _, _, _, w in self._rows:
+            self._vlayout.removeWidget(w)
+            w.deleteLater()
+        self._rows.clear()
+        self.add_row()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 class SchemaWidget(QGroupBox):
     """Einklappbares Schema-Widget mit einzelnen Unterfeldern."""
     def __init__(self, schema_name: str, sub_fields: list, parent=None):
@@ -193,7 +382,7 @@ class SchemaWidget(QGroupBox):
         parts = []
         for key, label, _ in self._defs:
             val = self.inputs[key].text().strip()
-            parts.append(f"{key.upper()}: {val}" if val else f"{key.upper()}: —")
+            parts.append(f"{key.upper()}= {val}" if val else f"{key.upper()}= ")
         return self.title() + "\n" + "\n".join(parts)
 
     def set_values(self, data: dict):
@@ -569,20 +758,35 @@ class MainWindow(QMainWindow):
 
         # ── Beteiligte Rettungsmittel ───────────────────────────────────
         rm_group = QGroupBox("Beteiligte Rettungsmittel")
-        rm_form = QFormLayout()
-        rm_group.setLayout(rm_form)
-        self.new_rettungsmittel = QLineEdit()
-        self.new_rettungsmittel.setPlaceholderText("z.B. RTW, NEF, RTW 3, FW Löschzug")
-        rm_form.addRow("Rettungsmittel:", self.new_rettungsmittel)
+        rm_layout = QVBoxLayout()
+        rm_group.setLayout(rm_layout)
+        self.new_rettungsmittel_widget = RettungsmittelListWidget()
+        rm_layout.addWidget(self.new_rettungsmittel_widget)
         layout.addWidget(rm_group)
 
         # ── Medikamente ─────────────────────────────────────────────────
         med_group = QGroupBox("Verabreichte Medikamente")
-        med_form = QFormLayout()
-        med_group.setLayout(med_form)
-        self.new_medikamente = QLineEdit()
-        self.new_medikamente.setPlaceholderText("z.B. Adrenalin 1mg i.v., Amiodaron 300mg")
-        med_form.addRow("Medikamente:", self.new_medikamente)
+        med_layout = QVBoxLayout()
+        # Spaltenbeschriftung
+        med_header = QWidget()
+        med_header_l = QHBoxLayout()
+        med_header_l.setContentsMargins(0, 0, 0, 0)
+        med_header_l.setSpacing(4)
+        lbl_name = QLabel("Medikament")
+        lbl_name.setMinimumWidth(140)
+        lbl_dosis = QLabel("Dosis")
+        lbl_dosis.setFixedWidth(90)
+        lbl_app = QLabel("Applikation")
+        lbl_app.setFixedWidth(110)
+        med_header_l.addWidget(lbl_name)
+        med_header_l.addWidget(lbl_dosis)
+        med_header_l.addWidget(lbl_app)
+        med_header_l.addStretch()
+        med_header.setLayout(med_header_l)
+        med_layout.addWidget(med_header)
+        self.new_medikamente_widget = MedikamentListWidget()
+        med_layout.addWidget(self.new_medikamente_widget)
+        med_group.setLayout(med_layout)
         layout.addWidget(med_group)
 
         # ── Schemata ────────────────────────────────────────────────────
@@ -692,13 +896,42 @@ class MainWindow(QMainWindow):
     def setup_view_edit_tab(self):
         """Erstellt den Tab zum Ansehen/Bearbeiten"""
         view_edit_widget = QWidget()
+        outer_layout = QVBoxLayout()
+        view_edit_widget.setLayout(outer_layout)
+
+        splitter = QSplitter(Qt.Vertical)
+        outer_layout.addWidget(splitter)
+
+        # ── Obere Hälfte: Bericht-Liste ──────────────────────────────────
+        list_widget = QWidget()
+        list_layout = QVBoxLayout()
+        list_widget.setLayout(list_layout)
+
+        list_top = QHBoxLayout()
+        list_top.addWidget(QLabel("<b>Gespeicherte Berichte:</b>"))
+        list_top.addStretch()
+        refresh_edit_btn = QPushButton("Aktualisieren")
+        refresh_edit_btn.clicked.connect(self.load_edit_list)
+        list_top.addWidget(refresh_edit_btn)
+        list_layout.addLayout(list_top)
+
+        self.edit_list_table = QTableWidget()
+        self.edit_list_table.setColumnCount(4)
+        self.edit_list_table.setHorizontalHeaderLabels(["ID", "Titel", "Thema", "Erstellt am"])
+        self.edit_list_table.horizontalHeader().setStretchLastSection(True)
+        self.edit_list_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.edit_list_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.edit_list_table.doubleClicked.connect(self.load_bericht_from_edit_list)
+        self.edit_list_table.clicked.connect(self.load_bericht_from_edit_list)
+        list_layout.addWidget(self.edit_list_table)
+
+        splitter.addWidget(list_widget)
+
+        # ── Untere Hälfte: Bearbeitungsformular ──────────────────────────
+        form_container = QWidget()
         layout = QVBoxLayout()
-        view_edit_widget.setLayout(layout)
-        
-        # Info
-        info_label = QLabel("Wählen Sie einen Bericht aus der Übersicht, um ihn hier zu bearbeiten")
-        layout.addWidget(info_label)
-        
+        form_container.setLayout(layout)
+
         # Formular
         form_layout = QFormLayout()
         
@@ -753,6 +986,9 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(export_pages_btn)
 
         layout.addLayout(button_layout)
+
+        splitter.addWidget(form_container)
+        splitter.setSizes([200, 500])
 
         self.tabs.addTab(view_edit_widget, "Ansehen/Bearbeiten")
 
@@ -925,19 +1161,47 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Fehler", f"Fehler bei der Stil-Analyse:\n{error}")
 
     def load_berichte(self):
-        """Lädt alle Berichte in die Tabelle"""
+        """Lädt alle Berichte in die Übersichts-Tabelle und die Bearbeiten-Liste"""
         self.table.setRowCount(0)
         berichte = self.db.alle_berichte_abrufen()
-        
+
         for bericht in berichte:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            
+
             self.table.setItem(row, 0, QTableWidgetItem(str(bericht['id'])))
             self.table.setItem(row, 1, QTableWidgetItem(bericht['titel']))
             self.table.setItem(row, 2, QTableWidgetItem(bericht['thema']))
             self.table.setItem(row, 3, QTableWidgetItem(bericht['erstellt_am']))
             self.table.setItem(row, 4, QTableWidgetItem(bericht['aktualisiert_am']))
+
+        self.load_edit_list()
+
+    def load_edit_list(self):
+        """Aktualisiert die Bericht-Liste im Ansehen/Bearbeiten-Tab"""
+        self.edit_list_table.setRowCount(0)
+        berichte = self.db.alle_berichte_abrufen()
+
+        for bericht in berichte:
+            row = self.edit_list_table.rowCount()
+            self.edit_list_table.insertRow(row)
+            self.edit_list_table.setItem(row, 0, QTableWidgetItem(str(bericht['id'])))
+            self.edit_list_table.setItem(row, 1, QTableWidgetItem(bericht['titel']))
+            self.edit_list_table.setItem(row, 2, QTableWidgetItem(bericht['thema']))
+            self.edit_list_table.setItem(row, 3, QTableWidgetItem(bericht['erstellt_am']))
+
+    def load_bericht_from_edit_list(self):
+        """Lädt den in der Bearbeiten-Liste angeklickten Bericht ins Formular"""
+        row = self.edit_list_table.currentRow()
+        if row < 0:
+            return
+        bericht_id = int(self.edit_list_table.item(row, 0).text())
+        bericht = self.db.bericht_abrufen(bericht_id)
+        if bericht:
+            self.edit_id.setText(str(bericht['id']))
+            self.edit_titel.setText(bericht['titel'])
+            self.edit_thema.setText(bericht['thema'])
+            self.edit_inhalt.setPlainText(bericht['inhalt'])
     
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
@@ -1024,8 +1288,8 @@ class MainWindow(QMainWindow):
             if cb.isChecked():
                 val = inp.text().strip()
                 schemata.append(f"{name}: {val}" if val else name)
-        medikamente = self.new_medikamente.text().strip()
-        rettungsmittel = self.new_rettungsmittel.text().strip()
+        medikamente = self.new_medikamente_widget.get_text()
+        rettungsmittel = self.new_rettungsmittel_widget.get_text()
 
         # Progress Dialog
         progress = QProgressDialog("Bericht wird mit Claude AI erstellt...", None, 0, 0, self)
@@ -1062,8 +1326,8 @@ class MainWindow(QMainWindow):
             return
         # Basis-Felder füllen
         self.new_stichwort.setText(data.get('stichwort', ''))
-        self.new_medikamente.setText(data.get('medikamente', ''))
-        self.new_rettungsmittel.setText(data.get('rettungsmittel', ''))
+        self.new_medikamente_widget.set_medikamente(data.get('medikamente', ''))
+        self.new_rettungsmittel_widget.set_text(data.get('rettungsmittel', ''))
         self.new_zusatz.setPlainText(data.get('zusatz', ''))
         # Datum / Uhrzeit
         if data.get('datum'):
@@ -1142,8 +1406,8 @@ class MainWindow(QMainWindow):
         self.new_datum.setDate(QDate.currentDate())
         self.new_uhrzeit.setTime(QTime.currentTime())
         self.new_stichwort.clear()
-        self.new_medikamente.clear()
-        self.new_rettungsmittel.clear()
+        self.new_medikamente_widget.clear()
+        self.new_rettungsmittel_widget.clear()
         for widget in self.schema_widgets.values():
             widget.clear_values()
         if 'ABCDE' in self.schema_widgets:

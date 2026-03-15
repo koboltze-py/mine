@@ -1637,6 +1637,33 @@ class MainWindow(QMainWindow):
         font = textedit.font()
         font.setPointSize(max(font.pointSize(), 11))
         editor.setFont(font)
+        # Seitenumbruch-Toolbar im Popup
+        _pb_highlighter_popup = PageBreakHighlighter(editor.document())
+        _pb_bar_popup = QHBoxLayout()
+        _pb_bar_popup.setSpacing(4)
+        _pb_lbl_popup = QLabel("Seitenumbrüche:")
+        _pb_lbl_popup.setStyleSheet("font-weight:bold; font-size:11px;")
+        _pb_bar_popup.addWidget(_pb_lbl_popup)
+        _pb_ins_popup = QPushButton("✂\ufe0f  Umbruch hier einfügen")
+        _pb_ins_popup.setToolTip(
+            "Fügt an der Cursor-Position einen Seitenumbruch ein.\n"
+            "Im Export wird an dieser Stelle eine neue Seite begonnen.")
+        _pb_ins_popup.setStyleSheet(
+            "QPushButton{border:1px solid #7b1fa2;color:#7b1fa2;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#7b1fa2;color:#fff;}")
+        _pb_ins_popup.clicked.connect(lambda checked=False, te=editor: self._insert_pagebreak_in(te))
+        _pb_bar_popup.addWidget(_pb_ins_popup)
+        _pb_rem_popup = QPushButton("❌  Umbruch entfernen")
+        _pb_rem_popup.setToolTip("Entfernt den nächsten Seitenumbruch ab der Cursor-Position.")
+        _pb_rem_popup.setStyleSheet(
+            "QPushButton{border:1px solid #c62828;color:#c62828;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#c62828;color:#fff;}")
+        _pb_rem_popup.clicked.connect(lambda checked=False, te=editor: self._remove_pagebreak_in(te))
+        _pb_bar_popup.addWidget(_pb_rem_popup)
+        _pb_bar_popup.addStretch()
+        dlg_layout.addLayout(_pb_bar_popup)
         dlg_layout.addWidget(editor)
         btn_row = QHBoxLayout()
         ok_btn = QPushButton("✔\u00a0 Übernehmen")
@@ -1689,6 +1716,17 @@ class MainWindow(QMainWindow):
         self.edit_list_table.horizontalHeader().setStretchLastSection(True)
         self.edit_list_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.edit_list_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.edit_list_table.setAlternatingRowColors(True)
+        self.edit_list_table.verticalHeader().setDefaultSectionSize(28)
+        self.edit_list_table.setStyleSheet(
+            "QTableWidget::item:selected {"
+            "  background: #0d47a1; color: #ffffff; font-weight: bold; "
+            "}"
+            "QTableWidget::item:selected:!active {"
+            "  background: #1565c0; color: #ffffff; "
+            "}"
+            "QTableWidget { alternate-background-color: #f0f4ff; }"
+        )
         self.edit_list_table.doubleClicked.connect(self.load_bericht_from_edit_list)
         self.edit_list_table.clicked.connect(self.load_bericht_from_edit_list)
         list_layout.addWidget(self.edit_list_table)
@@ -1788,8 +1826,40 @@ class MainWindow(QMainWindow):
             lambda: self._popup_text_edit(self.edit_inhalt, "Inhalt bearbeiten – Vollbild"))
         _inhalt_header.addWidget(_inhalt_popup_btn)
         layout.addLayout(_inhalt_header)
+
+        # ─ Seitenumbruch-Toolbar für Berichtinhalt ──────────────────────
+        _edit_pb_bar = QHBoxLayout()
+        _edit_pb_bar.setSpacing(4)
+        _edit_pb_lbl = QLabel("Seitenumbrüche:")
+        _edit_pb_lbl.setStyleSheet("font-weight:bold; font-size:11px;")
+        _edit_pb_bar.addWidget(_edit_pb_lbl)
+        _edit_pb_insert_btn = QPushButton("✂\ufe0f  Umbruch hier einfügen")
+        _edit_pb_insert_btn.setToolTip(
+            "Fügt an der aktuellen Cursor-Position einen Seitenumbruch ein.\n"
+            "Im Export wird an dieser Stelle eine neue Seite begonnen.")
+        _edit_pb_insert_btn.setStyleSheet(
+            "QPushButton{border:1px solid #7b1fa2;color:#7b1fa2;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#7b1fa2;color:#fff;}")
+        _edit_pb_insert_btn.clicked.connect(lambda: self._insert_pagebreak_in(self.edit_inhalt))
+        _edit_pb_bar.addWidget(_edit_pb_insert_btn)
+        _edit_pb_remove_btn = QPushButton("❌  Umbruch entfernen")
+        _edit_pb_remove_btn.setToolTip("Entfernt den nächsten Seitenumbruch ab der Cursor-Position.")
+        _edit_pb_remove_btn.setStyleSheet(
+            "QPushButton{border:1px solid #c62828;color:#c62828;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#c62828;color:#fff;}")
+        _edit_pb_remove_btn.clicked.connect(lambda: self._remove_pagebreak_in(self.edit_inhalt))
+        _edit_pb_bar.addWidget(_edit_pb_remove_btn)
+        _edit_pb_bar.addStretch()
+        _edit_pb_hint = QLabel("│  ——— SEITENUMBRUCH ———  markiert eine neue Seite im Export")
+        _edit_pb_hint.setStyleSheet("color:#7b1fa2;font-size:10px;font-style:italic;")
+        _edit_pb_bar.addWidget(_edit_pb_hint)
+        layout.addLayout(_edit_pb_bar)
+
         self.edit_inhalt = QTextEdit()
         self.edit_inhalt.setMinimumHeight(110)
+        self._edit_inhalt_pb_highlighter = PageBreakHighlighter(self.edit_inhalt.document())
         layout.addWidget(self.edit_inhalt)
 
         # Schemata
@@ -2132,34 +2202,40 @@ class MainWindow(QMainWindow):
                 "Bitte den Bericht zuerst als PDF exportieren."
             )
 
-    def _insert_pagebreak(self):
-        """Fügt einen Seitenumbruch-Marker an der aktuellen Cursor-Position im Preview ein."""
-        cursor = self.preview_text.textCursor()
-        # Zeilenanfang + Marker als eigene Zeile
+    def _insert_pagebreak_in(self, te: QTextEdit):
+        """Fügt einen Seitenumbruch-Marker an der Cursor-Position im angegebenen QTextEdit ein."""
+        cursor = te.textCursor()
         cursor.movePosition(cursor.MoveOperation.EndOfLine)
         cursor.insertText(f"\n{PAGE_BREAK_MARKER}\n")
-        self.preview_text.setTextCursor(cursor)
+        te.setTextCursor(cursor)
 
-    def _remove_pagebreak(self):
-        """Entfernt den nächsten Seitenumbruch-Marker ab der aktuellen Cursor-Position."""
-        text = self.preview_text.toPlainText()
-        pos = self.preview_text.textCursor().position()
+    def _remove_pagebreak_in(self, te: QTextEdit):
+        """Entfernt den nächsten Seitenumbruch-Marker ab der Cursor-Position im angegebenen QTextEdit."""
+        text = te.toPlainText()
+        pos = te.textCursor().position()
         idx = text.find(PAGE_BREAK_MARKER, pos)
         if idx == -1:
-            idx = text.find(PAGE_BREAK_MARKER)  # von vorne suchen falls nichts dahinter
+            idx = text.find(PAGE_BREAK_MARKER)
         if idx == -1:
             QMessageBox.information(self, "Hinweis", "Kein Seitenumbruch gefunden.")
             return
-        # Ganze Zeile inkl. Zeilenumbruch davor/danach entfernen
         start = text.rfind('\n', 0, idx)
         start = 0 if start == -1 else start
         end = text.find('\n', idx + len(PAGE_BREAK_MARKER))
         end = len(text) if end == -1 else end + 1
-        cursor = self.preview_text.textCursor()
+        cursor = te.textCursor()
         cursor.setPosition(start)
         cursor.setPosition(end, cursor.MoveMode.KeepAnchor)
         cursor.removeSelectedText()
-        self.preview_text.setTextCursor(cursor)
+        te.setTextCursor(cursor)
+
+    def _insert_pagebreak(self):
+        """Fügt einen Seitenumbruch-Marker im Vorschau-Feld ein."""
+        self._insert_pagebreak_in(self.preview_text)
+
+    def _remove_pagebreak(self):
+        """Entfernt den nächsten Seitenumbruch-Marker im Vorschau-Feld."""
+        self._remove_pagebreak_in(self.preview_text)
 
     def _ki_medikament_details_edit(self):
         """KI schlägt Details für alle Medikamente im Bearbeiten-Tab nach."""

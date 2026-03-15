@@ -455,6 +455,33 @@ class ClaudeAPIHandler:
         except Exception as e:
             raise Exception(f"Fehler beim Zusammenfassen des Einsatzberichts: {str(e)}")
 
+    def reflexion_ausformulieren(self, stichwoerter: str) -> str:
+        """
+        Formuliert aus kurzen Stichwörtern eine vollständige Einsatzreflexion.
+
+        Args:
+            stichwoerter: Kurze Stichpunkte / Stichwörter zur Reflexion
+
+        Returns:
+            Ausformulierter Reflexionstext (3-6 Sätze, professionell)
+        """
+        prompt = (
+            "Du bist ein erfahrener Rettungsdienstmitarbeiter und schreibst eine Einsatzreflexion.\n\n"
+            "Formuliere aus den folgenden Stichwörtern eine professionelle, ausformulierte "
+            "Einsatzreflexion in 3–6 Sätzen. Schreibe in der Ich-Perspektive oder Wir-Perspektive. "
+            "KEIN Markdown, keine Aufzählungszeichen, kein Fettdruck.\n\n"
+            f"Stichwörter: {stichwoerter}"
+        )
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text.strip()
+        except Exception as e:
+            raise Exception(f"Fehler beim Ausformulieren der Reflexion: {str(e)}")
+
     def scenario_erfinden(self, krankheitsbild: str) -> dict:
         """
         Erfindet ein realistisches Rettungsdienst-Einsatzszenario und prüft

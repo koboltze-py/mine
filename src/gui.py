@@ -474,6 +474,23 @@ class ErfindenWorker(QThread):
             self.error.emit(str(e))
 
 
+class ReflexionWorker(QThread):
+    """Worker Thread: Stichwörter → ausformulierte Reflexion via Claude"""
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(self, claude_handler, stichwoerter: str):
+        super().__init__()
+        self.claude_handler = claude_handler
+        self.stichwoerter = stichwoerter
+
+    def run(self):
+        try:
+            self.finished.emit(self.claude_handler.reflexion_ausformulieren(self.stichwoerter))
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 KRANKHEITSBILDER = [
     "Reanimation – Asystolie",
     "Reanimation – Kammerflimmern (VF / pulslose VT)",
@@ -1051,9 +1068,14 @@ class MainWindow(QMainWindow):
         self.new_reflexion = QTextEdit()
         self.new_reflexion.setMaximumHeight(100)
         self.new_reflexion.setPlaceholderText(
-            "Eigene Reflexion zum Einsatz (wird im Export als eigene Sektion ausgegeben)..."
+            "Stichwörter zur Reflexion (z.B. \"gute Teamarbeit, zeitkritisch, IV-Zugang schwierig\") "
+            "– Claude formuliert daraus einen professionellen Text."
         )
         reflexion_form.addRow("Reflexion:", self.new_reflexion)
+        _new_refl_ki_btn = QPushButton("🤖 Reflexion ausformulieren (KI)")
+        _new_refl_ki_btn.setToolTip("Stichwörter → Claude schreibt vollständige Reflexion")
+        _new_refl_ki_btn.clicked.connect(self._ki_reflexion_new)
+        reflexion_form.addRow("", _new_refl_ki_btn)
         layout.addWidget(reflexion_group)
 
         # ── Vorschau + Buttons ──────────────────────────────────────────
@@ -1063,7 +1085,7 @@ class MainWindow(QMainWindow):
         outer_layout.addWidget(self.preview_text)
 
         button_layout = QHBoxLayout()
-        generate_btn = QPushButton("🤖 Mit Claude AI generieren")
+        generate_btn = QPushButton("🤖 Bericht generieren")
         generate_btn.clicked.connect(self.generate_report)
         button_layout.addWidget(generate_btn)
         erfinden_btn_main = QPushButton("🎲 Bericht erfinden (KI)")
@@ -1276,6 +1298,10 @@ class MainWindow(QMainWindow):
         list_top = QHBoxLayout()
         list_top.addWidget(QLabel("<b>Gespeicherte Berichte:</b>"))
         list_top.addStretch()
+        open_pdf_btn = QPushButton("📄 PDF öffnen")
+        open_pdf_btn.setToolTip("PDF des ausgewählten Berichts öffnen")
+        open_pdf_btn.clicked.connect(self._open_selected_pdf)
+        list_top.addWidget(open_pdf_btn)
         refresh_edit_btn = QPushButton("Aktualisieren")
         refresh_edit_btn.clicked.connect(self.load_edit_list)
         list_top.addWidget(refresh_edit_btn)
@@ -1374,6 +1400,10 @@ class MainWindow(QMainWindow):
         _refl_header = QHBoxLayout()
         _refl_header.addWidget(QLabel("<b>Einsatzreflexion:</b>"))
         _refl_header.addStretch()
+        _refl_ki_btn = QPushButton("🤖 KI ausformulieren")
+        _refl_ki_btn.setToolTip("Stichwörter → Claude schreibt vollständige Reflexion")
+        _refl_ki_btn.clicked.connect(self._ki_reflexion_edit)
+        _refl_header.addWidget(_refl_ki_btn)
         _refl_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
         _refl_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_reflexion, "Einsatzreflexion bearbeiten – Vollbild"))
@@ -1381,7 +1411,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(_refl_header)
         self.edit_reflexion = QTextEdit()
         self.edit_reflexion.setMaximumHeight(100)
-        self.edit_reflexion.setPlaceholderText("Eigene Reflexion zum Einsatz...")
+        self.edit_reflexion.setPlaceholderText(
+            "Stichwörter zur Reflexion (z.B. \"gute Teamarbeit, IV-Zugang schwierig\") "
+            "– Claude formuliert daraus einen professionellen Text.")
         layout.addWidget(self.edit_reflexion)
         
         # Buttons
@@ -1603,6 +1635,56 @@ class MainWindow(QMainWindow):
 
         self.load_edit_list()
 
+    def _open_selected_pdf(self):
+        """Öffnet das PDF des aktuell ausgewählten Berichts."""
+        row = self.edit_list_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Warnung", "Bitte zuerst einen Bericht auswählen.")
+            return
+        bericht_id = int(self.edit_list_table.item(row, 0).text())
+        bericht = self.db.bericht_abrufen(bericht_id)
+        if not bericht:
+            return
+        pdf_pfad = bericht.get("pdf_pfad", "")
+        if pdf_pfad and os.path.exists(pdf_pfad):
+            os.startfile(pdf_pfad)
+        else:
+            QMessageBox.warning(
+                self, "PDF nicht gefunden",
+                "Kein PDF für diesen Bericht vorhanden.\n"
+                "Bitte den Bericht zuerst als PDF exportieren."
+            )
+
+    def _ki_reflexion_new(self):
+        """KI formuliert Reflexion aus Stichwörtern im Neuer-Bericht-Tab."""
+        stichwoerter = self.new_reflexion.toPlainText().strip()
+        if not stichwoerter:
+            QMessageBox.warning(self, "Leer", "Bitte zuerst Stichwörter ins Reflexionsfeld eingeben.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        self._refl_worker_new = ReflexionWorker(self.claude, stichwoerter)
+        self._refl_worker_new.finished.connect(self.new_reflexion.setPlainText)
+        self._refl_worker_new.error.connect(
+            lambda e: QMessageBox.critical(self, "Fehler", e))
+        self._refl_worker_new.start()
+
+    def _ki_reflexion_edit(self):
+        """KI formuliert Reflexion aus Stichwörtern im Bearbeiten-Tab."""
+        stichwoerter = self.edit_reflexion.toPlainText().strip()
+        if not stichwoerter:
+            QMessageBox.warning(self, "Leer", "Bitte zuerst Stichwörter ins Reflexionsfeld eingeben.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        self._refl_worker_edit = ReflexionWorker(self.claude, stichwoerter)
+        self._refl_worker_edit.finished.connect(self.edit_reflexion.setPlainText)
+        self._refl_worker_edit.error.connect(
+            lambda e: QMessageBox.critical(self, "Fehler", e))
+        self._refl_worker_edit.start()
+
     def load_edit_list(self):
         """Aktualisiert die Bericht-Liste im Ansehen/Bearbeiten-Tab"""
         self.edit_list_table.setRowCount(0)
@@ -1807,7 +1889,7 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(1)
         QMessageBox.information(self, "Szenario übernommen",
             "Das erfundene Szenario wurde ins Formular übernommen.\n"
-            "Klicken Sie auf '🤖 Mit Claude AI generieren' um den vollständigen Bericht zu erstellen.")
+            "Klicken Sie auf '🤖 Bericht generieren' um den vollständigen Bericht zu erstellen.")
 
     def on_report_generated(self, text, progress):
         """Wird aufgerufen, wenn der Bericht generiert wurde"""

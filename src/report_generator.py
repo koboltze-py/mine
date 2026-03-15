@@ -68,7 +68,8 @@ class ReportGenerator:
 
     def generate_pdf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                      font_family: str = "Arial", font_size: int = 11,
-                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
+                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None,
+                     medikamente: list = None) -> str:
         """
         Generiert ein PDF-Dokument des Einsatzberichts
         
@@ -205,6 +206,93 @@ class ReportGenerator:
                 ]))
                 story.append(Spacer(1, 0.4*cm))
 
+        # Medikamenten-Tabelle
+        if medikamente:
+            has_details = any(
+                m.get('wirkweise') or m.get('nebenwirkungen') or m.get('kontraindikation')
+                for m in medikamente
+            )
+            if has_details:
+                col_widths = [3.5*cm, 2.0*cm, 2.0*cm, 9.5*cm]
+                hdr = [
+                    Paragraph('<b>Medikament</b>', body_style),
+                    Paragraph('<b>Dosis</b>', body_style),
+                    Paragraph('<b>Applikation</b>', body_style),
+                    Paragraph('<b>Wirkweise / Nebenwirkungen / Kontraindikation</b>', body_style),
+                ]
+                med_rows = [hdr]
+                for m in medikamente:
+                    detail_parts = []
+                    if m.get('wirkweise'):
+                        detail_parts.append(f"<b>Wirkweise:</b> {m['wirkweise']}")
+                    if m.get('nebenwirkungen'):
+                        detail_parts.append(f"<b>NW:</b> {m['nebenwirkungen']}")
+                    if m.get('kontraindikation'):
+                        detail_parts.append(f"<b>KI:</b> {m['kontraindikation']}")
+                    det = Paragraph('<br/>'.join(detail_parts) if detail_parts else '–', body_style)
+                    med_rows.append([
+                        Paragraph(m.get('name', ''), body_style),
+                        Paragraph(m.get('dosis', ''), body_style),
+                        Paragraph(m.get('applikation', ''), body_style),
+                        det,
+                    ])
+            else:
+                col_widths = [5.5*cm, 3.0*cm, 8.5*cm]
+                hdr = [
+                    Paragraph('<b>Medikament</b>', body_style),
+                    Paragraph('<b>Dosis</b>', body_style),
+                    Paragraph('<b>Applikation</b>', body_style),
+                ]
+                med_rows = [hdr]
+                for m in medikamente:
+                    med_rows.append([
+                        Paragraph(m.get('name', ''), body_style),
+                        Paragraph(m.get('dosis', ''), body_style),
+                        Paragraph(m.get('applikation', ''), body_style),
+                    ])
+            med_tbl = Table(med_rows, colWidths=col_widths)
+            med_tbl.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), rl_font),
+                ('FONTSIZE', (0, 0), (-1, -1), fs),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.85, 0.92, 0.85)),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.Color(0.96, 0.99, 0.96)),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ]))
+            story.append(KeepTogether([
+                Paragraph('<b>Verabreichte Medikamente</b>', heading_style),
+                med_tbl,
+            ]))
+            story.append(Spacer(1, 0.4*cm))
+
+        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
+                       Paragraph(str(v), body_style)]
+                      for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                _stbl = Table(_srows, colWidths=[1.8*cm, 15.2*cm])
+                _stbl.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), rl_font),
+                    ('FONTSIZE', (0, 0), (-1, -1), fs),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
+                    ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.90, 0.93, 0.97)),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ]))
+                story.append(KeepTogether([
+                    Paragraph(f'<b>{_sname}-Schema</b>', heading_style),
+                    _stbl,
+                ]))
+                story.append(Spacer(1, 0.3*cm))
+
         # Text nach dem ABCDE-Block
         if _after is not None:
             for absatz in _after.split('\n'):
@@ -229,7 +317,8 @@ class ReportGenerator:
     
     def generate_word(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                       font_family: str = "Arial", font_size: int = 11,
-                      reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
+                      reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None,
+                      medikamente: list = None) -> str:
         """
         Generiert ein Word-Dokument des Einsatzberichts
         
@@ -327,6 +416,59 @@ class ReportGenerator:
                                 run.font.size = _fs
                 doc.add_paragraph()
 
+        # Medikamenten-Tabelle (Word)
+        if medikamente:
+            has_details = any(
+                m.get('wirkweise') or m.get('nebenwirkungen') or m.get('kontraindikation')
+                for m in medikamente
+            )
+            h = doc.add_heading('Verabreichte Medikamente', 2)
+            h.paragraph_format.keep_with_next = True
+            n_cols = 4 if has_details else 3
+            med_tbl = doc.add_table(rows=1 + len(medikamente), cols=n_cols)
+            med_tbl.style = 'Table Grid'
+            hdr_cells = med_tbl.rows[0].cells
+            hdr_cells[0].text = 'Medikament'
+            hdr_cells[1].text = 'Dosis'
+            hdr_cells[2].text = 'Applikation'
+            if has_details:
+                hdr_cells[3].text = 'Wirkweise / NW / KI'
+            for i, m in enumerate(medikamente, start=1):
+                row_cells = med_tbl.rows[i].cells
+                row_cells[0].text = m.get('name', '')
+                row_cells[1].text = m.get('dosis', '')
+                row_cells[2].text = m.get('applikation', '')
+                if has_details:
+                    parts = []
+                    if m.get('wirkweise'):    parts.append(f"Wirkweise: {m['wirkweise']}")
+                    if m.get('nebenwirkungen'): parts.append(f"NW: {m['nebenwirkungen']}")
+                    if m.get('kontraindikation'): parts.append(f"KI: {m['kontraindikation']}")
+                    row_cells[3].text = '  |  '.join(parts)
+                for cell in med_tbl.rows[i].cells:
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = _fs
+            doc.add_paragraph()
+
+        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                h = doc.add_heading(f'{_sname}-Schema', 2)
+                h.paragraph_format.keep_with_next = True
+                tbl = doc.add_table(rows=len(_srows), cols=2)
+                tbl.style = 'Table Grid'
+                for i, (key, val) in enumerate(_srows):
+                    tbl.cell(i, 0).text = key
+                    tbl.cell(i, 1).text = val
+                    for cell in [tbl.cell(i, 0), tbl.cell(i, 1)]:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = _fs
+                doc.add_paragraph()
+
         # Text nach dem ABCDE-Block
         if _after is not None:
             for absatz in _after.split('\n'):
@@ -363,7 +505,8 @@ class ReportGenerator:
 
     def generate_odf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                      font_family: str = "Arial", font_size: int = 11,
-                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
+                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None,
+                     medikamente: list = None) -> str:
         """Generiert ein ODF-Textdokument (.odt)"""
         from odf.opendocument import OpenDocumentText
         from odf.text import P, H
@@ -429,6 +572,63 @@ class ReportGenerator:
                     doc.text.addElement(P(stylename=text_style, text=line))
                 doc.text.addElement(P(text=""))
 
+        # Medikamente (ODF) — echte Tabelle
+        if medikamente:
+            from odf.table import (
+                Table as _OdfTable, TableRow as _OdfTableRow,
+                TableCell as _OdfTableCell, TableColumn as _OdfTableColumn
+            )
+            _detail_keys = ('wirkweise', 'nebenwirkungen', 'kontraindikation')
+            has_details = any(any(m.get(k) for k in _detail_keys) for m in medikamente)
+            doc.text.addElement(H(outlinelevel=2, text="Verabreichte Medikamente"))
+            n_cols = 4 if has_details else 3
+            odf_med_tbl = _OdfTable(name="MedikamenteTabelle")
+            for _ in range(n_cols):
+                odf_med_tbl.addElement(_OdfTableColumn())
+            # Kopfzeile
+            hdr_row = _OdfTableRow()
+            headers = ['Medikament', 'Dosis', 'Applikation']
+            if has_details:
+                headers.append('Wirkweise / NW / Kontraindikation')
+            for hdr_text in headers:
+                cell = _OdfTableCell()
+                cell.addElement(P(stylename=text_style, text=hdr_text))
+                hdr_row.addElement(cell)
+            odf_med_tbl.addElement(hdr_row)
+            # Datenzeilen
+            for m in medikamente:
+                data_row = _OdfTableRow()
+                for val in (m.get('name', ''), m.get('dosis', ''), m.get('applikation', '')):
+                    cell = _OdfTableCell()
+                    cell.addElement(P(stylename=text_style, text=val))
+                    data_row.addElement(cell)
+                if has_details:
+                    parts = []
+                    if m.get('wirkweise'):
+                        parts.append(f"Wirkweise: {m['wirkweise']}")
+                    if m.get('nebenwirkungen'):
+                        parts.append(f"NW: {m['nebenwirkungen']}")
+                    if m.get('kontraindikation'):
+                        parts.append(f"KI: {m['kontraindikation']}")
+                    cell = _OdfTableCell()
+                    cell.addElement(P(stylename=text_style,
+                                     text=' | '.join(parts) if parts else ''))
+                    data_row.addElement(cell)
+                odf_med_tbl.addElement(data_row)
+            doc.text.addElement(odf_med_tbl)
+            doc.text.addElement(P(text=""))
+
+        # Weitere Schemata (OPQRST, SAMPLER etc.)
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                doc.text.addElement(H(outlinelevel=2, text=f"{_sname}-Schema"))
+                for key, val in _srows:
+                    doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
+                doc.text.addElement(P(text=""))
+
         # Text nach dem ABCDE-Block
         if _after is not None:
             for absatz in _after.split('\n'):
@@ -451,7 +651,8 @@ class ReportGenerator:
         return filepath
 
     def generate_pages(self, titel: str, thema: str, inhalt: str, bericht_id: int,
-                       reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
+                       reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None,
+                       medikamente: list = None) -> str:
         """Generiert ein Apple Pages-Dokument (.pages, iWork '09 Format)"""
 
         def escape(s: str) -> str:
@@ -483,12 +684,30 @@ class ReportGenerator:
         _before, _after = self._split_at_abcde(inhalt)
         before_lines = [l for l in _before.split('\n') if not self._is_schema_line(l)]
         after_lines = [l for l in (_after.split('\n') if _after is not None else []) if not self._is_schema_line(l)]
+        other_schema_lines = []
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                other_schema_lines += [f"{_sname}-Schema:"] + [f"  {k}  {v}" for k, v in _srows] + [""]
+        med_lines = []
+        if medikamente:
+            med_lines = ["Verabreichte Medikamente:"]
+            for m in medikamente:
+                med_lines.append(f"  {m.get('name', '')}  {m.get('dosis', '')}  {m.get('applikation', '')}".strip())
+                if m.get('wirkweise'):      med_lines.append(f"    Wirkweise: {m['wirkweise']}")
+                if m.get('nebenwirkungen'): med_lines.append(f"    Nebenwirkungen: {m['nebenwirkungen']}")
+                if m.get('kontraindikation'): med_lines.append(f"    Kontraindikation: {m['kontraindikation']}")
+            med_lines.append("")
         lines = (
             ["EINSATZBERICHT", "", f"Titel: {titel}", f"Alarmierung: {thema}", ""]
             + ["BERICHT:", ""]
             + before_lines
             + abcde_lines
             + vw_lines
+            + med_lines
+            + other_schema_lines
             + after_lines
             + ([""]+reflexion_lines if reflexion_lines else [])
         )

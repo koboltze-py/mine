@@ -32,6 +32,24 @@ class ClaudeWorker(QThread):
             self.error.emit(str(e))
 
 
+class MedikamentDetailsWorker(QThread):
+    """Worker Thread zum Abrufen von Medikamenten-Details über Claude"""
+    finished = Signal(list)
+    error = Signal(str)
+
+    def __init__(self, claude_handler, medikament_namen: list):
+        super().__init__()
+        self.claude_handler = claude_handler
+        self.medikament_namen = medikament_namen
+
+    def run(self):
+        try:
+            result = self.claude_handler.medikament_details_abrufen(self.medikament_namen)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class StilAnalyseWorker(QThread):
     """Worker Thread für Claude Stil-Analyse"""
     finished = Signal(dict)
@@ -252,7 +270,8 @@ class MedikamentListWidget(QWidget):
         self._vlayout.addWidget(add_btn)
         self.add_row()
 
-    def add_row(self, name="", dosis="", applikation="i.v."):
+    def add_row(self, name="", dosis="", applikation="i.v.",
+                 wirkweise="", nebenwirkungen="", kontraindikation=""):
         row_w = QWidget()
         row_l = QHBoxLayout()
         row_l.setContentsMargins(0, 0, 0, 0)
@@ -279,6 +298,13 @@ class MedikamentListWidget(QWidget):
         else:
             app_combo.setCurrentText(applikation)
 
+        details = {'wirkweise': wirkweise, 'nebenwirkungen': nebenwirkungen,
+                   'kontraindikation': kontraindikation}
+        details_btn = QPushButton("ℹ Details")
+        details_btn.setToolTip("Wirkweise, Nebenwirkungen, Kontraindikation eintragen")
+        details_btn.setFixedWidth(80)
+        details_btn.clicked.connect(lambda: self._open_details(name_edit, details))
+
         rm_btn = QPushButton("✕")
         rm_btn.setFixedSize(24, 24)
         rm_btn.clicked.connect(lambda: self._remove_row(row_w))
@@ -286,13 +312,48 @@ class MedikamentListWidget(QWidget):
         row_l.addWidget(name_edit)
         row_l.addWidget(dosis_edit)
         row_l.addWidget(app_combo)
+        row_l.addWidget(details_btn)
         row_l.addWidget(rm_btn)
 
         self._vlayout.insertWidget(self._vlayout.count() - 1, row_w)
-        self._rows.append((name_edit, dosis_edit, app_combo, row_w))
+        self._rows.append((name_edit, dosis_edit, app_combo, details, row_w))
+
+    def _open_details(self, name_edit, details):
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Details: {name_edit.text() or 'Medikament'}")
+        dlg.setMinimumWidth(460)
+        form = QFormLayout(dlg)
+        form.setSpacing(8)
+        ww = QTextEdit()
+        ww.setMaximumHeight(65)
+        ww.setPlaceholderText("z.B. Hemmung der Cyclooxygenase, analgetisch, antipyretisch …")
+        ww.setPlainText(details.get('wirkweise', ''))
+        form.addRow("Wirkweise:", ww)
+        nw = QTextEdit()
+        nw.setMaximumHeight(65)
+        nw.setPlaceholderText("z.B. Magenreizung, Blutungsneigung, Bronchospasmus …")
+        nw.setPlainText(details.get('nebenwirkungen', ''))
+        form.addRow("Nebenwirkungen:", nw)
+        ki = QTextEdit()
+        ki.setMaximumHeight(65)
+        ki.setPlaceholderText("z.B. Magen-/Darmulzera, Gerinnungsstörung, ASS-Allergie …")
+        ki.setPlainText(details.get('kontraindikation', ''))
+        form.addRow("Kontraindikation:", ki)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(lambda: (
+            details.update({
+                'wirkweise': ww.toPlainText().strip(),
+                'nebenwirkungen': nw.toPlainText().strip(),
+                'kontraindikation': ki.toPlainText().strip(),
+            }),
+            dlg.accept()
+        ))
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+        dlg.exec()
 
     def _remove_row(self, row_w):
-        for i, (n, d, a, w) in enumerate(self._rows):
+        for i, (*_, w) in enumerate(self._rows):
             if w is row_w:
                 self._rows.pop(i)
                 self._vlayout.removeWidget(w)
@@ -300,17 +361,28 @@ class MedikamentListWidget(QWidget):
                 break
 
     def get_medikamente(self) -> list:
-        """Gibt Liste von dicts zurück: [{'name', 'dosis', 'applikation'}]"""
+        """Gibt Liste von dicts zurück: [{'name', 'dosis', 'applikation', 'wirkweise', 'nebenwirkungen', 'kontraindikation'}]"""
         result = []
-        for name_edit, dosis_edit, app_combo, _ in self._rows:
+        for name_edit, dosis_edit, app_combo, details, _ in self._rows:
             name = name_edit.text().strip()
             if name:
                 result.append({
                     'name': name,
                     'dosis': dosis_edit.text().strip(),
                     'applikation': app_combo.currentText().strip(),
+                    'wirkweise': details.get('wirkweise', ''),
+                    'nebenwirkungen': details.get('nebenwirkungen', ''),
+                    'kontraindikation': details.get('kontraindikation', ''),
                 })
         return result
+
+    def update_row_details(self, medikament_name: str, details_dict: dict):
+        """Aktualisiert die Details eines Medikament-Eintrags anhand des Namens (case-insensitive)."""
+        name_lower = medikament_name.strip().lower()
+        for name_edit, _d, _a, details, _w in self._rows:
+            if name_edit.text().strip().lower() == name_lower:
+                details.update(details_dict)
+                break
 
     def get_text(self) -> str:
         """Formatierte Medikamentenliste als einzelne Zeilen."""
@@ -346,12 +418,15 @@ class MedikamentListWidget(QWidget):
         elif isinstance(value, list):
             for m in value:
                 if isinstance(m, dict):
-                    self.add_row(m.get('name', ''), m.get('dosis', ''), m.get('applikation', 'i.v.'))
+                    self.add_row(
+                        m.get('name', ''), m.get('dosis', ''), m.get('applikation', 'i.v.'),
+                        m.get('wirkweise', ''), m.get('nebenwirkungen', ''), m.get('kontraindikation', '')
+                    )
                 elif isinstance(m, str) and m.strip():
                     self.add_row(name=m.strip())
 
     def clear(self):
-        for _, _, _, w in self._rows:
+        for *_, w in self._rows:
             self._vlayout.removeWidget(w)
             w.deleteLater()
         self._rows.clear()
@@ -1050,6 +1125,19 @@ class MainWindow(QMainWindow):
         med_layout.addWidget(med_header)
         self.new_medikamente_widget = MedikamentListWidget()
         med_layout.addWidget(self.new_medikamente_widget)
+
+        _ki_med_btn = QPushButton("🤖  KI-Details abrufen (Wirkweise / NW / KI)")
+        _ki_med_btn.setToolTip(
+            "Claude AI sucht für alle eingetragenen Medikamente automatisch:\n"
+            "Wirkweise, Nebenwirkungen, Kontraindikation, Indikation, Dosierung uvm.\n"
+            "Die Details erscheinen dann in der Tabelle im Export.")
+        _ki_med_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:5px 12px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _ki_med_btn.clicked.connect(self._ki_medikament_details_new)
+        med_layout.addWidget(_ki_med_btn)
+
         med_group.setLayout(med_layout)
         layout.addWidget(med_group)
 
@@ -1556,6 +1644,12 @@ class MainWindow(QMainWindow):
         form_layout.addRow("KI-Kontext:", _kontext_container)
         layout.addLayout(form_layout)
 
+        # Medikamente
+        _med_lbl = QLabel("<b>Verabreichte Medikamente:</b>")
+        layout.addWidget(_med_lbl)
+        self.edit_medikamente_widget = MedikamentListWidget()
+        layout.addWidget(self.edit_medikamente_widget)
+
         # Inhalt
         _inhalt_header = QHBoxLayout()
         _inhalt_header.addWidget(QLabel("<b>Berichtinhalt:</b>"))
@@ -1943,6 +2037,53 @@ class MainWindow(QMainWindow):
             lambda e: QMessageBox.critical(self, "Fehler", e))
         self._refl_worker_edit.start()
 
+    def _ki_medikament_details_new(self):
+        """KI schlägt Details für alle eingetragenen Medikamente nach und trägt sie ein."""
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        meds = self.new_medikamente_widget.get_medikamente()
+        namen = [m['name'] for m in meds if m['name'].strip()]
+        if not namen:
+            QMessageBox.information(
+                self, "Hinweis",
+                "Bitte zuerst mindestens ein Medikament eintragen.")
+            return
+        progress = QProgressDialog(
+            f"KI sucht Details für {len(namen)} Medikament(e) …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._med_details_worker = MedikamentDetailsWorker(self.claude, namen)
+        self._med_details_worker.finished.connect(
+            lambda results: self._on_med_details_fetched(results, progress))
+        self._med_details_worker.error.connect(
+            lambda err: (progress.close(),
+                         QMessageBox.critical(
+                             self, "KI-Fehler",
+                             f"Details konnten nicht abgerufen werden:\n{err}")))
+        self._med_details_worker.start()
+
+    def _on_med_details_fetched(self, results: list, progress):
+        """Trägt die von der KI abgerufenen Medikamenten-Details in die Widget-Zeilen ein."""
+        progress.close()
+        count = 0
+        for item in results:
+            name = item.get('name', '')
+            if not name:
+                continue
+            self.new_medikamente_widget.update_row_details(
+                name,
+                {k: item.get(k, '') for k in (
+                    'wirkweise', 'nebenwirkungen', 'kontraindikation',
+                    'indikation', 'dosierung', 'applikation', 'arzneimittelgruppe',
+                    'inkubationszeit')}
+            )
+            count += 1
+        QMessageBox.information(
+            self, "Fertig",
+            f"Details für {count} Medikament(e) wurden eingetragen.\n"
+            "Öffne den ℹ Details-Button einer Zeile, um alles zu prüfen.")
+
     def load_edit_list(self):
         """Aktualisiert die Bericht-Liste im Ansehen/Bearbeiten-Tab"""
         self.edit_list_table.setRowCount(0)
@@ -1982,6 +2123,10 @@ class MainWindow(QMainWindow):
                 self.edit_vitalwerte_widget.set_vitalwerte(vw)
             self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
             self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
+            med_raw = _json.loads(bericht.get('medikamente_json', '') or '[]')
+            self.edit_medikamente_widget.clear()
+            if med_raw:
+                self.edit_medikamente_widget.set_medikamente(med_raw)
 
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
@@ -2034,6 +2179,10 @@ class MainWindow(QMainWindow):
                 self.edit_vitalwerte_widget.set_vitalwerte(vw)
             self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
             self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
+            med_raw = _json.loads(bericht.get('medikamente_json', '') or '[]')
+            self.edit_medikamente_widget.clear()
+            if med_raw:
+                self.edit_medikamente_widget.set_medikamente(med_raw)
 
             self.tabs.setCurrentIndex(2)  # Wechsle zu Tab "Ansehen/Bearbeiten"
     
@@ -2198,18 +2347,25 @@ class MainWindow(QMainWindow):
             schema_data['xABCDE']['x'] = 'keine kritischen Blutungen'
         abcde_json = _json.dumps(schema_data, ensure_ascii=False)
         vitalwerte_json = _json.dumps(self.new_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
+        medikamente_list = self.new_medikamente_widget.get_medikamente()
+        medikamente_json = _json.dumps(medikamente_list, ensure_ascii=False)
 
         bericht_id = self.db.bericht_erstellen(titel, thema, inhalt, reflexion=reflexion,
-                                               abcde_json=abcde_json, vitalwerte_json=vitalwerte_json)
+                                               abcde_json=abcde_json, vitalwerte_json=vitalwerte_json,
+                                               medikamente_json=medikamente_json)
 
         # Optional: PDF und Word generieren
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         try:
             pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                    abcde_data=schema_data, vitalwerte=self.new_vitalwerte_widget.get_vitalwerte())
+                                                    abcde_data=schema_data,
+                                                    vitalwerte=self.new_vitalwerte_widget.get_vitalwerte(),
+                                                    medikamente=medikamente_list)
             word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                     abcde_data=schema_data, vitalwerte=self.new_vitalwerte_widget.get_vitalwerte())
+                                                     abcde_data=schema_data,
+                                                     vitalwerte=self.new_vitalwerte_widget.get_vitalwerte(),
+                                                     medikamente=medikamente_list)
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -2255,10 +2411,12 @@ class MainWindow(QMainWindow):
         import json as _json
         vitalwerte_json = _json.dumps(self.edit_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
         abcde_json = self._edit_abcde_json or '{}'
+        medikamente_list = self.edit_medikamente_widget.get_medikamente()
+        medikamente_json = _json.dumps(medikamente_list, ensure_ascii=False)
 
         self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt,
                                        reflexion=reflexion, vitalwerte_json=vitalwerte_json,
-                                       abcde_json=abcde_json)
+                                       abcde_json=abcde_json, medikamente_json=medikamente_json)
 
         # Optional: Neue Dokumente generieren
         ff = self.font_family_combo.currentText()
@@ -2267,9 +2425,11 @@ class MainWindow(QMainWindow):
         vitalwerte = self.edit_vitalwerte_widget.get_vitalwerte()
         try:
             pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                    abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                    abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                    medikamente=medikamente_list)
             word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                     abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                     abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                     medikamente=medikamente_list)
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -2297,32 +2457,33 @@ class MainWindow(QMainWindow):
         import json as _json
         abcde_data = _json.loads(bericht.get('abcde_json', '') or '{}')
         vitalwerte = _json.loads(bericht.get('vitalwerte_json', '') or '{}')
+        medikamente_data = _json.loads(bericht.get('medikamente_json', '') or '[]')
 
         try:
             if format_type == 'pdf':
                 filepath = self.report_gen.generate_pdf(
                     bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
-                    abcde_data=abcde_data, vitalwerte=vitalwerte
+                    abcde_data=abcde_data, vitalwerte=vitalwerte, medikamente=medikamente_data
                 )
             elif format_type == 'word':
                 filepath = self.report_gen.generate_word(
                     bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
-                    abcde_data=abcde_data, vitalwerte=vitalwerte
+                    abcde_data=abcde_data, vitalwerte=vitalwerte, medikamente=medikamente_data
                 )
             elif format_type == 'odf':
                 filepath = self.report_gen.generate_odf(
                     bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
-                    abcde_data=abcde_data, vitalwerte=vitalwerte
+                    abcde_data=abcde_data, vitalwerte=vitalwerte, medikamente=medikamente_data
                 )
             elif format_type == 'pages':
                 filepath = self.report_gen.generate_pages(
                     bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, reflexion,
-                    abcde_data=abcde_data, vitalwerte=vitalwerte
+                    abcde_data=abcde_data, vitalwerte=vitalwerte, medikamente=medikamente_data
                 )
             else:
                 filepath = self.report_gen.generate_word(
                     bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
-                    abcde_data=abcde_data, vitalwerte=vitalwerte
+                    abcde_data=abcde_data, vitalwerte=vitalwerte, medikamente=medikamente_data
                 )
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
@@ -2348,23 +2509,29 @@ class MainWindow(QMainWindow):
         bericht_db2 = self.db.bericht_abrufen(bericht_id)
         abcde_data = _json.loads((bericht_db2 or {}).get('abcde_json', '') or '{}')
         vitalwerte = self.edit_vitalwerte_widget.get_vitalwerte()
+        medikamente_data = _json.loads((bericht_db2 or {}).get('medikamente_json', '') or '[]')
 
         try:
             if format_type == 'pdf':
                 filepath = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                        abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                        abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                        medikamente=medikamente_data)
             elif format_type == 'word':
                 filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                         abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                         abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                         medikamente=medikamente_data)
             elif format_type == 'odf':
                 filepath = self.report_gen.generate_odf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                        abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                        abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                        medikamente=medikamente_data)
             elif format_type == 'pages':
                 filepath = self.report_gen.generate_pages(titel, thema, inhalt, bericht_id, reflexion,
-                                                          abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                          abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                          medikamente=medikamente_data)
             else:
                 filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
-                                                         abcde_data=abcde_data, vitalwerte=vitalwerte)
+                                                         abcde_data=abcde_data, vitalwerte=vitalwerte,
+                                                         medikamente=medikamente_data)
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
         except Exception as e:

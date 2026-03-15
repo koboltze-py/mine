@@ -356,6 +356,54 @@ class ClaudeAPIHandler:
 
         except Exception as e:
             raise Exception(f"Fehler beim Erstellen des Einsatzberichts: {str(e)}")
+
+    def medikament_details_abrufen(self, medikament_namen: list) -> list:
+        """
+        Fragt bei Claude-KI Wirkweise, Nebenwirkungen und Kontraindikation
+        für eine Liste von Medikamenten ab.
+
+        Returns:
+            Liste von dicts: [{'name', 'wirkweise', 'nebenwirkungen', 'kontraindikation'}, ...]
+        """
+        if not medikament_namen:
+            return []
+        namen_block = "\n".join(f"- {n}" for n in medikament_namen)
+        prompt = (
+            f"Du bist ein medizinischer Fachinformationsdienst für den Rettungsdienst.\n"
+            f"Gib für jedes der folgenden Notfallmedikamente eine kompakte, fachlich korrekte "
+            f"Übersicht in DEUTSCH aus.\n\n"
+            f"Medikamente:\n{namen_block}\n\n"
+            f"Antworte AUSSCHLIESSLICH als JSON-Array in diesem Format (kein Markdown, keine Erklärungen):\n"
+            f'[\n'
+            f'  {{\n'
+            f'    "name": "<exakter Name wie eingegeben>",\n'
+            f'    "wirkweise": "<Kurzform: Wirkstoffklasse + Wirkprinzip, max 1-2 Sätze>",\n'
+            f'    "nebenwirkungen": "<häufigste/relevanteste NW im Notfall, max 1-2 Sätze>",\n'
+            f'    "kontraindikation": "<wichtigste KI im Notfallbereich, max 1-2 Sätze>",\n'
+            f'    "indikation": "<Kurzform: wofür eingesetzt im RD, max 1 Satz>",\n'
+            f'    "dosierung": "<typische Notfalldosierung laut AWMF/AHA, max 1-2 Sätze>",\n'
+            f'    "applikation": "<mögliche Applikationswege im Notfall>",\n'
+            f'    "arzneimittelgruppe": "<Wirkstoffklasse/Gruppe>",\n'
+            f'    "inkubationszeit": "<Wirkungseintritt nach Gabe, max 1 Satz>"\n'
+            f'  }}\n'
+            f']\n\n'
+            f"Halte dich STRIKT an das JSON-Format. Antworte mit nichts außer dem JSON-Array."
+        )
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            import json as _json, re as _re
+            raw = message.content[0].text.strip()
+            # JSON aus Antwort extrahieren (falls doch Markdown-Fence dabei)
+            m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+            if m:
+                raw = m.group()
+            return _json.loads(raw)
+        except Exception as e:
+            raise Exception(f"Fehler beim Abrufen der Medikamenten-Details: {str(e)}")
     
     def stil_analysieren(self) -> dict:
         """

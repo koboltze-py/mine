@@ -265,10 +265,38 @@ class ClaudeAPIHandler:
             else:
                 details.append(f"Verabreichte Medikamente: {medikamente}")
         if schemata:
-            schema_text = "\n".join(f"  - {s}" for s in schemata)
-            details.append(
-                f"ABCDE-Schema (NUR qualitative Befunde, KEINE Messwerte wie RR/HF/SpO2/BZ/Temp/GCS \u2013 diese sind in der Vitalwerte-Tabelle):\n{schema_text}"
-            )
+            # Schemata nach Typ aufteilen für klare Claude-Instruktionen
+            abcde_entries, opqrst_entries, sampler_entries, simple_entries = [], [], [], []
+            for s in schemata:
+                first = s.split('\n')[0].strip().lower()
+                if first.startswith('xabcde') or first.startswith('abcde'):
+                    abcde_entries.append(s)
+                elif first.startswith('opqrst'):
+                    opqrst_entries.append(s)
+                elif first.startswith('sampler'):
+                    sampler_entries.append(s)
+                else:
+                    simple_entries.append(s)
+            if abcde_entries:
+                details.append(
+                    f"xABCDE-Schema (NUR qualitative Befunde, KEINE Messwerte – diese stehen in Vitalwerte):\n"
+                    + "\n".join(f"  {s}" for s in abcde_entries)
+                )
+            if opqrst_entries:
+                details.append(
+                    f"OPQRST-Schmerzanamnese (im Bericht als eigene Anamnese-Sektion einbauen):\n"
+                    + "\n".join(f"  {s}" for s in opqrst_entries)
+                )
+            if sampler_entries:
+                details.append(
+                    f"SAMPLER-Anamnese (im Bericht als eigene Anamnese-Sektion einbauen):\n"
+                    + "\n".join(f"  {s}" for s in sampler_entries)
+                )
+            if simple_entries:
+                details.append(
+                    f"Weitere Befunde / Scores (im Bericht natürlich erwähnen):\n"
+                    + "\n".join(f"  {s}" for s in simple_entries)
+                )
         if zusaetzliche_infos:
             details.append(f"Zusätzliche Informationen / Kontext: {zusaetzliche_infos}")
         detail_block = "\n".join(details)
@@ -289,7 +317,9 @@ class ClaudeAPIHandler:
                 f"  - Messwerte im Format: Kürzel- Wert  (Beispiel: 'RR- 130/85; HF- 92')\n"
                 f"  - Fließtext ohne Aufzählungszeichen außer für Medikamentenlisten\n"
                 f"  - Jedes Medikament bekommt eine eigene Sektion mit: Arzneimittelgruppe, Indikation,\n"
-                f"    Kontraindikation, Unerwünschte Arzneimittelwirkung (UAW), Dosierung/Durchführung\n\n"                f"EINSATZ-DATEN (diese konkret verwenden):\n{detail_block}\n\n"
+                f"    Kontraindikation, Unerwünschte Arzneimittelwirkung (UAW), Dosierung/Durchführung\n"
+                f"  - OPQRST-Einträge als Schmerzanamnese-Abschnitt einbauen (O=/P=/Q=/R=/S=/T=)\n"
+                f"  - SAMPLER-Einträge als Anamnese-Abschnitt einbauen (S=/A=/M=/P=/L=/E=/R=)\n\n"                f"EINSATZ-DATEN (diese konkret verwenden):\n{detail_block}\n\n"
                 f"{seiten_info}\n\n"
                 f"Erfinde realistische, stimmige Details für alles was nicht angegeben wurde "
                 f"(Straße, Hausnummer, Patientenalter/-geschlecht, Vitalwerte, Verlauf)."
@@ -302,12 +332,14 @@ class ClaudeAPIHandler:
                 f"  - Schema-Eintr\u00e4ge im Format: Buchstabe= Text  (Beispiel: 'A= Atemweg frei')\n"
                 f"  - ABCDE-Schema im Bericht NUR qualitative Befunde (kein RR/HF/SpO2/BZ/Temp/GCS)\n"
                 f"  - Vitalwerte trotzdem nat\u00fcrlich im Flie\u00dftext erw\u00e4hnen\n"
+                f"  - OPQRST-Einträge als Schmerzanamnese-Abschnitt einbauen (O=/P=/Q=/R=/S=/T=)\n"
+                f"  - SAMPLER-Einträge als Anamnese-Abschnitt einbauen (S=/A=/M=/P=/L=/E=/R=)\n"
                 f"  - Jedes Medikament bekommt eine eigene Sektion mit: Arzneimittelgruppe, Indikation,\n"
                 f"    Kontraindikation, UAW, Dosierung/Durchführung\n\n"
                 f"EINSATZ-DATEN:\n{detail_block}\n\n"
                 f"{seiten_info}\n\n"
                 f"Struktur: Alarmierung (Uhrzeit/Stichwort), Einsatzort, Lage bei Ankunft, "
-                f"Durchgeführte Maßnahmen (ABCDE-Schema), Medikamente/Therapie, Transport/Übergabe, Fazit.\n"
+                f"Durchgeführte Maßnahmen (xABCDE-Schema), Medikamente/Therapie, Transport/Übergabe, Fazit.\n"
                 f"Erfinde realistische Details für fehlende Angaben."
             )
 

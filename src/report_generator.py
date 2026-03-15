@@ -49,6 +49,17 @@ class ReportGenerator:
     ]
 
     @staticmethod
+    def _set_table_no_split(table) -> None:
+        """Prevents every row in a Word (docx) table from splitting across pages."""
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        for row in table.rows:
+            trPr = row._tr.get_or_add_trPr()
+            cant_split = OxmlElement('w:cantSplit')
+            cant_split.set(qn('w:val'), '1')
+            trPr.append(cant_split)
+
+    @staticmethod
     def _is_schema_line(line: str) -> bool:
         """Returns True for lines like 'X= ...', 'A= ...', 'xABCDE', etc. that belong in the table."""
         return bool(re.match(r'^\s*[XxA-Ea-e]\s*=', line))
@@ -182,6 +193,7 @@ class ReportGenerator:
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
                     ('LEFTPADDING', (0, 0), (-1, -1), 5),
                 ]))
+                tbl.splitByRow = 0
                 story.append(KeepTogether([
                     Paragraph('<b>xABCDE-Schema</b>', heading_style),
                     tbl,
@@ -209,6 +221,7 @@ class ReportGenerator:
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
                     ('LEFTPADDING', (0, 0), (-1, -1), 5),
                 ]))
+                tbl.splitByRow = 0
                 story.append(KeepTogether([
                     Paragraph('<b>Vitalwerte / Messwerte</b>', heading_style),
                     tbl,
@@ -234,6 +247,7 @@ class ReportGenerator:
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
                     ('LEFTPADDING', (0, 0), (-1, -1), 5),
                 ]))
+                _stbl.splitByRow = 0
                 story.append(KeepTogether([
                     Paragraph(f'<b>{_sname}-Schema</b>', heading_style),
                     _stbl,
@@ -303,6 +317,7 @@ class ReportGenerator:
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
                 ('LEFTPADDING', (0, 0), (-1, -1), 5),
             ]))
+            med_tbl.splitByRow = 0
             story.append(KeepTogether([
                 Paragraph('<b>Verabreichte Medikamente</b>', heading_style),
                 med_tbl,
@@ -398,6 +413,7 @@ class ReportGenerator:
                 h.paragraph_format.keep_with_next = True
                 tbl = doc.add_table(rows=len(abcde_rows), cols=2)
                 tbl.style = 'Table Grid'
+                self._set_table_no_split(tbl)
                 for i, (key, val) in enumerate(abcde_rows):
                     tbl.cell(i, 0).text = key
                     tbl.cell(i, 1).text = val
@@ -420,6 +436,7 @@ class ReportGenerator:
                 h.paragraph_format.keep_with_next = True
                 tbl = doc.add_table(rows=len(vital_rows), cols=2)
                 tbl.style = 'Table Grid'
+                self._set_table_no_split(tbl)
                 for i, (lbl, val) in enumerate(vital_rows):
                     tbl.cell(i, 0).text = lbl
                     tbl.cell(i, 1).text = val
@@ -439,6 +456,7 @@ class ReportGenerator:
                 h.paragraph_format.keep_with_next = True
                 tbl = doc.add_table(rows=len(_srows), cols=2)
                 tbl.style = 'Table Grid'
+                self._set_table_no_split(tbl)
                 for i, (key, val) in enumerate(_srows):
                     tbl.cell(i, 0).text = key
                     tbl.cell(i, 1).text = val
@@ -457,6 +475,7 @@ class ReportGenerator:
             n_cols = 4 if has_details else 3
             med_tbl = doc.add_table(rows=1 + len(medikamente), cols=n_cols)
             med_tbl.style = 'Table Grid'
+            self._set_table_no_split(med_tbl)
             hdr_cells = med_tbl.rows[0].cells
             hdr_cells[0].text = 'Medikament'
             hdr_cells[1].text = 'Dosis'
@@ -617,16 +636,21 @@ class ReportGenerator:
                 Table as _OdfTable, TableRow as _OdfTableRow,
                 TableCell as _OdfTableCell, TableColumn as _OdfTableColumn
             )
+            from odf.style import TableRowProperties as _OdfTableRowProperties
             _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
                             'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
             has_details = any(any(m.get(k) for k in _DETAIL_KEYS) for m in medikamente)
             doc.text.addElement(H(outlinelevel=2, text="Verabreichte Medikamente"))
+            # Zeilenstil: verhindert Zeilenteilung durch Seitenumbruch
+            _row_no_split = Style(name="KeepTableRow", family="table-row")
+            _row_no_split.addElement(_OdfTableRowProperties(keeptogether="always"))
+            doc.automaticstyles.addElement(_row_no_split)
             n_cols = 4 if has_details else 3
             odf_med_tbl = _OdfTable(name="MedikamenteTabelle")
             for _ in range(n_cols):
                 odf_med_tbl.addElement(_OdfTableColumn())
             # Kopfzeile
-            hdr_row = _OdfTableRow()
+            hdr_row = _OdfTableRow(stylename=_row_no_split)
             headers = ['Medikament', 'Dosis', 'Applikation']
             if has_details:
                 headers.append('Pharmakologie / Klinische Details')
@@ -637,7 +661,7 @@ class ReportGenerator:
             odf_med_tbl.addElement(hdr_row)
             # Datenzeilen
             for m in medikamente:
-                data_row = _OdfTableRow()
+                data_row = _OdfTableRow(stylename=_row_no_split)
                 for val in (m.get('name', ''), m.get('dosis', ''), m.get('applikation', '')):
                     cell = _OdfTableCell()
                     cell.addElement(P(stylename=text_style, text=val))

@@ -38,12 +38,12 @@ PAGE_BREAK_MARKER = "\u2500\u2500\u2500 SEITENUMBRUCH \u2500\u2500\u2500"
 
 class PageBreakHighlighter(QSyntaxHighlighter):
     """Hebt Seitenumbruch-Zeilen im Preview violett hervor."""
-    def highlightBlock(self, text: str):
+    def highlightBlock(self, text):
         if PAGE_BREAK_MARKER in text:
             fmt = QTextCharFormat()
             fmt.setBackground(QColor("#ede7f6"))
             fmt.setForeground(QColor("#7b1fa2"))
-            fmt.setFontBold(True)
+            fmt.setFontWeight(700)  # Bold
             self.setFormat(0, len(text), fmt)
 
 

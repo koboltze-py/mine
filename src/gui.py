@@ -1704,6 +1704,10 @@ class MainWindow(QMainWindow):
         open_pdf_btn.setToolTip("PDF des aktuell geladenen Berichts im Standardprogramm öffnen")
         open_pdf_btn.clicked.connect(self._open_selected_pdf)
         list_top.addWidget(open_pdf_btn)
+        open_folder_btn = QPushButton("📁 Berichts-Ordner öffnen")
+        open_folder_btn.setToolTip("Ordner mit allen exportierten Berichten im Explorer öffnen")
+        open_folder_btn.clicked.connect(self._open_reports_folder)
+        list_top.addWidget(open_folder_btn)
         delete_edit_btn = QPushButton("🗑 Bericht löschen")
         delete_edit_btn.setToolTip("Markierten Bericht dauerhaft löschen")
         delete_edit_btn.setStyleSheet(
@@ -2210,6 +2214,12 @@ class MainWindow(QMainWindow):
                 "Kein PDF für diesen Bericht vorhanden.\n"
                 "Bitte den Bericht zuerst als PDF exportieren."
             )
+
+    def _open_reports_folder(self):
+        """Öffnet den Berichts-Exportordner im Windows-Explorer."""
+        folder = os.path.abspath(self.report_gen.output_dir)
+        os.makedirs(folder, exist_ok=True)
+        os.startfile(folder)
 
     def _insert_pagebreak_in(self, te: QTextEdit):
         """Fügt einen Seitenumbruch-Marker an der Cursor-Position im angegebenen QTextEdit ein."""

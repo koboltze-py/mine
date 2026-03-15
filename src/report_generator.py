@@ -45,6 +45,22 @@ class ReportGenerator:
         ('etco2', 'EtCO2',  'mmHg'),
     ]
 
+    @staticmethod
+    def _split_at_abcde(inhalt: str):
+        """Splits inhalt into (before, after) at the ABCDE= block. Returns (inhalt, None) if none found."""
+        lines = inhalt.split('\n')
+        pat = re.compile(r'^\s*[A-Ea-e]\s*=')
+        start = None
+        end = None
+        for i, line in enumerate(lines):
+            if pat.match(line):
+                if start is None:
+                    start = i
+                end = i
+        if start is None:
+            return inhalt, None
+        return '\n'.join(lines[:start]), '\n'.join(lines[end+1:])
+
     def generate_pdf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                      font_family: str = "Arial", font_size: int = 11,
                      reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
@@ -119,7 +135,19 @@ class ReportGenerator:
         story.append(Paragraph(f"<b>Alarmierung:</b> {thema}", body_style))
         story.append(Spacer(1, 0.4*cm))
 
-        # ABCDE-Tabelle
+        # Inhalt
+        story.append(Paragraph("<b>BERICHT:</b>", heading_style))
+
+        # Text vor dem ABCDE-Block
+        _before, _after = self._split_at_abcde(inhalt)
+        for absatz in _before.split('\n'):
+            if absatz.strip():
+                if absatz.strip().isupper() or absatz.strip()[0].isdigit():
+                    story.append(Paragraph(absatz, heading_style))
+                else:
+                    story.append(Paragraph(absatz, body_style))
+
+        # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
             abcde = abcde_data.get('ABCDE', {})
             rows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
@@ -143,7 +171,7 @@ class ReportGenerator:
                 ]))
                 story.append(Spacer(1, 0.3*cm))
 
-        # Vitalwerte-Tabelle
+        # Vitalwerte-Tabelle inline (direkt nach ABCDE)
         if vitalwerte:
             vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
             rows = []
@@ -170,19 +198,14 @@ class ReportGenerator:
                 ]))
                 story.append(Spacer(1, 0.4*cm))
 
-        # Inhalt
-        story.append(Paragraph("<b>BERICHT:</b>", heading_style))
-
-        # ABCDE-Zeilen aus Fließtext entfernen wenn Tabelle vorhanden
-        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
-        # Inhalt in Paragraphen aufteilen
-        for absatz in _inhalt.split('\n'):
-            if absatz.strip():
-                # Prüfe ob es eine Überschrift ist (z.B. beginnt mit Nummer oder ist in Großbuchstaben)
-                if absatz.strip().isupper() or absatz.strip()[0].isdigit():
-                    story.append(Paragraph(absatz, heading_style))
-                else:
-                    story.append(Paragraph(absatz, body_style))
+        # Text nach dem ABCDE-Block
+        if _after is not None:
+            for absatz in _after.split('\n'):
+                if absatz.strip():
+                    if absatz.strip().isupper() or absatz.strip()[0].isdigit():
+                        story.append(Paragraph(absatz, heading_style))
+                    else:
+                        story.append(Paragraph(absatz, body_style))
         
         # Reflexion
         if reflexion:
@@ -241,8 +264,21 @@ class ReportGenerator:
         
         doc.add_paragraph()
 
-        # ABCDE-Tabelle
+        # Bericht Überschrift
+        doc.add_heading('BERICHT', 1)
         _fs = Pt(font_size or 11)
+
+        # Text vor dem ABCDE-Block
+        _before, _after = self._split_at_abcde(inhalt)
+        for absatz in _before.split('\n'):
+            if absatz.strip():
+                if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
+                    h = doc.add_heading(absatz.strip(), 2)
+                    h.paragraph_format.keep_with_next = True
+                else:
+                    doc.add_paragraph(absatz)
+
+        # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
             abcde = abcde_data.get('ABCDE', {})
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
@@ -260,7 +296,7 @@ class ReportGenerator:
                                 run.font.size = _fs
                 doc.add_paragraph()
 
-        # Vitalwerte-Tabelle
+        # Vitalwerte-Tabelle inline (direkt nach ABCDE)
         if vitalwerte:
             vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
             vital_rows = []
@@ -281,21 +317,16 @@ class ReportGenerator:
                             for run in para.runs:
                                 run.font.size = _fs
                 doc.add_paragraph()
-        
-        # Bericht Überschrift
-        doc.add_heading('BERICHT', 1)
-        
-        # ABCDE-Zeilen aus Fließtext entfernen wenn Tabelle vorhanden
-        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
-        # Inhalt (keep_with_next auf Überschriften)
-        for absatz in _inhalt.split('\n'):
-            if absatz.strip():
-                # Prüfe ob es eine Überschrift ist
-                if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
-                    h = doc.add_heading(absatz.strip(), 2)
-                    h.paragraph_format.keep_with_next = True
-                else:
-                    doc.add_paragraph(absatz)
+
+        # Text nach dem ABCDE-Block
+        if _after is not None:
+            for absatz in _after.split('\n'):
+                if absatz.strip():
+                    if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
+                        h = doc.add_heading(absatz.strip(), 2)
+                        h.paragraph_format.keep_with_next = True
+                    else:
+                        doc.add_paragraph(absatz)
         
         # Reflexion
         if reflexion:
@@ -349,7 +380,21 @@ class ReportGenerator:
         doc.text.addElement(P(stylename=text_style, text=f"Alarmierung: {thema}"))
         doc.text.addElement(P(text=""))
 
-        # ABCDE-Schema als Abschnitt
+        doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
+        doc.text.addElement(P(text=""))
+
+        # Text vor dem ABCDE-Block
+        _before, _after = self._split_at_abcde(inhalt)
+        for absatz in _before.split('\n'):
+            if absatz.strip():
+                if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
+                    doc.text.addElement(H(outlinelevel=3, text=absatz))
+                else:
+                    doc.text.addElement(P(stylename=text_style, text=absatz))
+            else:
+                doc.text.addElement(P(text=""))
+
+        # ABCDE-Schema inline
         if abcde_data:
             abcde = abcde_data.get('ABCDE', {})
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
@@ -359,7 +404,7 @@ class ReportGenerator:
                     doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
                 doc.text.addElement(P(text=""))
 
-        # Vitalwerte als Abschnitt
+        # Vitalwerte inline (direkt nach ABCDE)
         if vitalwerte:
             vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
             vital_lines = []
@@ -373,18 +418,16 @@ class ReportGenerator:
                     doc.text.addElement(P(stylename=text_style, text=line))
                 doc.text.addElement(P(text=""))
 
-        doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
-        doc.text.addElement(P(text=""))
-
-        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
-        for absatz in _inhalt.split('\n'):
-            if absatz.strip():
-                if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
-                    doc.text.addElement(H(outlinelevel=3, text=absatz))
+        # Text nach dem ABCDE-Block
+        if _after is not None:
+            for absatz in _after.split('\n'):
+                if absatz.strip():
+                    if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
+                        doc.text.addElement(H(outlinelevel=3, text=absatz))
+                    else:
+                        doc.text.addElement(P(stylename=text_style, text=absatz))
                 else:
-                    doc.text.addElement(P(stylename=text_style, text=absatz))
-            else:
-                doc.text.addElement(P(text=""))
+                    doc.text.addElement(P(text=""))
 
         if reflexion:
             doc.text.addElement(P(text=""))
@@ -424,12 +467,15 @@ class ReportGenerator:
             if vw_parts:
                 vw_lines = ["Vitalwerte / Messwerte:"] + vw_parts + [""]
         reflexion_lines = (["EINSATZREFLEXION:", ""] + reflexion.split('\n')) if reflexion else []
+        _before, _after = self._split_at_abcde(inhalt)
+        after_lines = _after.split('\n') if _after is not None else []
         lines = (
             ["EINSATZBERICHT", "", f"Titel: {titel}", f"Alarmierung: {thema}", ""]
+            + ["BERICHT:", ""]
+            + _before.split('\n')
             + abcde_lines
             + vw_lines
-            + ["BERICHT:", ""]
-            + (re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt).split('\n')
+            + after_lines
             + ([""]+reflexion_lines if reflexion_lines else [])
         )
 

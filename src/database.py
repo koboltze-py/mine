@@ -24,6 +24,7 @@ class DatabaseHandler:
                     titel TEXT NOT NULL,
                     thema TEXT NOT NULL,
                     inhalt TEXT NOT NULL,
+                    reflexion TEXT DEFAULT '',
                     erstellt_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     aktualisiert_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     pdf_pfad TEXT,
@@ -32,22 +33,30 @@ class DatabaseHandler:
                 )
             ''')
             conn.commit()
+            # Migration: reflexion-Spalte zu bestehenden DBs hinzufügen
+            try:
+                cursor.execute("ALTER TABLE einsatzberichte ADD COLUMN reflexion TEXT DEFAULT ''")
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Spalte existiert bereits
     
-    def bericht_erstellen(self, titel: str, thema: str, inhalt: str, 
-                         pdf_pfad: Optional[str] = None, 
+    def bericht_erstellen(self, titel: str, thema: str, inhalt: str,
+                         reflexion: str = "",
+                         pdf_pfad: Optional[str] = None,
                          word_pfad: Optional[str] = None) -> int:
         """Erstellt einen neuen Einsatzbericht"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO einsatzberichte (titel, thema, inhalt, pdf_pfad, word_pfad)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (titel, thema, inhalt, pdf_pfad, word_pfad))
+                INSERT INTO einsatzberichte (titel, thema, inhalt, reflexion, pdf_pfad, word_pfad)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (titel, thema, inhalt, reflexion, pdf_pfad, word_pfad))
             conn.commit()
             return cursor.lastrowid
     
     def bericht_aktualisieren(self, bericht_id: int, titel: Optional[str] = None,
                              thema: Optional[str] = None, inhalt: Optional[str] = None,
+                             reflexion: Optional[str] = None,
                              pdf_pfad: Optional[str] = None, word_pfad: Optional[str] = None):
         """Aktualisiert einen bestehenden Einsatzbericht"""
         with sqlite3.connect(self.db_path) as conn:
@@ -65,6 +74,9 @@ class DatabaseHandler:
             if inhalt is not None:
                 updates.append("inhalt = ?")
                 params.append(inhalt)
+            if reflexion is not None:
+                updates.append("reflexion = ?")
+                params.append(reflexion)
             if pdf_pfad is not None:
                 updates.append("pdf_pfad = ?")
                 params.append(pdf_pfad)

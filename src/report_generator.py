@@ -32,7 +32,8 @@ class ReportGenerator:
     _DEFAULT_SIZE = 11
 
     def generate_pdf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
-                     font_family: str = "Arial", font_size: int = 11) -> str:
+                     font_family: str = "Arial", font_size: int = 11,
+                     reflexion: str = "") -> str:
         """
         Generiert ein PDF-Dokument des Einsatzberichts
         
@@ -98,14 +99,9 @@ class ReportGenerator:
         story.append(Paragraph("EINSATZBERICHT", title_style))
         story.append(Spacer(1, 0.5*cm))
         
-        # Bericht-ID und Datum
-        story.append(Paragraph(f"<b>Bericht-ID:</b> {bericht_id}", body_style))
-        story.append(Paragraph(f"<b>Erstellt am:</b> {datetime.now().strftime('%d.%m.%Y %H:%M')}", body_style))
-        story.append(Spacer(1, 0.5*cm))
-        
-        # Titel und Thema
+        # Titel und Alarmierung
         story.append(Paragraph(f"<b>Titel:</b> {titel}", heading_style))
-        story.append(Paragraph(f"<b>Thema:</b> {thema}", body_style))
+        story.append(Paragraph(f"<b>Alarmierung:</b> {thema}", body_style))
         story.append(Spacer(1, 0.5*cm))
         
         # Inhalt
@@ -120,13 +116,22 @@ class ReportGenerator:
                 else:
                     story.append(Paragraph(absatz, body_style))
         
+        # Reflexion
+        if reflexion:
+            story.append(Spacer(1, 0.5*cm))
+            story.append(Paragraph("<b>EINSATZREFLEXION:</b>", heading_style))
+            for absatz in reflexion.split('\n'):
+                if absatz.strip():
+                    story.append(Paragraph(absatz, body_style))
+        
         # PDF bauen
         doc.build(story)
         
         return filepath
     
     def generate_word(self, titel: str, thema: str, inhalt: str, bericht_id: int,
-                      font_family: str = "Arial", font_size: int = 11) -> str:
+                      font_family: str = "Arial", font_size: int = 11,
+                      reflexion: str = "") -> str:
         """
         Generiert ein Word-Dokument des Einsatzberichts
         
@@ -155,23 +160,15 @@ class ReportGenerator:
         title = doc.add_heading('EINSATZBERICHT', 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Bericht-Info
-        doc.add_paragraph()
-        info = doc.add_paragraph()
-        info.add_run(f'Bericht-ID: ').bold = True
-        info.add_run(f'{bericht_id}\n')
-        info.add_run('Erstellt am: ').bold = True
-        info.add_run(datetime.now().strftime('%d.%m.%Y %H:%M'))
-        
         doc.add_paragraph()
         
-        # Titel und Thema
+        # Titel und Alarmierung
         p = doc.add_paragraph()
         p.add_run('Titel: ').bold = True
         p.add_run(titel)
         
         p = doc.add_paragraph()
-        p.add_run('Thema: ').bold = True
+        p.add_run('Alarmierung: ').bold = True
         p.add_run(thema)
         
         doc.add_paragraph()
@@ -186,6 +183,13 @@ class ReportGenerator:
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                     doc.add_heading(absatz.strip(), 2)
                 else:
+                    doc.add_paragraph(absatz)
+        
+        # Reflexion
+        if reflexion:
+            doc.add_heading('EINSATZREFLEXION', 1)
+            for absatz in reflexion.split('\n'):
+                if absatz.strip():
                     doc.add_paragraph(absatz)
         
         # Speichern
@@ -205,7 +209,8 @@ class ReportGenerator:
         return pdf_path, word_path
 
     def generate_odf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
-                     font_family: str = "Arial", font_size: int = 11) -> str:
+                     font_family: str = "Arial", font_size: int = 11,
+                     reflexion: str = "") -> str:
         """Generiert ein ODF-Textdokument (.odt)"""
         from odf.opendocument import OpenDocumentText
         from odf.text import P, H
@@ -227,11 +232,8 @@ class ReportGenerator:
 
         doc.text.addElement(H(outlinelevel=1, text="EINSATZBERICHT"))
         doc.text.addElement(P(text=""))
-        doc.text.addElement(P(stylename=text_style, text=f"Bericht-ID: {bericht_id}"))
-        doc.text.addElement(P(stylename=text_style, text=f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}"))
-        doc.text.addElement(P(text=""))
         doc.text.addElement(H(outlinelevel=2, text=f"Titel: {titel}"))
-        doc.text.addElement(P(stylename=text_style, text=f"Thema: {thema}"))
+        doc.text.addElement(P(stylename=text_style, text=f"Alarmierung: {thema}"))
         doc.text.addElement(P(text=""))
         doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
         doc.text.addElement(P(text=""))
@@ -245,10 +247,17 @@ class ReportGenerator:
             else:
                 doc.text.addElement(P(text=""))
 
+        if reflexion:
+            doc.text.addElement(P(text=""))
+            doc.text.addElement(H(outlinelevel=2, text="EINSATZREFLEXION:"))
+            for absatz in reflexion.split('\n'):
+                if absatz.strip():
+                    doc.text.addElement(P(stylename=text_style, text=absatz))
+
         doc.save(filepath)
         return filepath
 
-    def generate_pages(self, titel: str, thema: str, inhalt: str, bericht_id: int) -> str:
+    def generate_pages(self, titel: str, thema: str, inhalt: str, bericht_id: int, reflexion: str = "") -> str:
         """Generiert ein Apple Pages-Dokument (.pages, iWork '09 Format)"""
 
         def escape(s: str) -> str:
@@ -258,14 +267,13 @@ class ReportGenerator:
         filename = f"bericht_{bericht_id}_{timestamp}.pages"
         filepath = os.path.join(self.output_dir, filename)
 
+        reflexion_lines = (["EINSATZREFLEXION:", ""] + reflexion.split('\n')) if reflexion else []
         lines = [
             "EINSATZBERICHT", "",
-            f"Bericht-ID: {bericht_id}",
-            f"Erstellt am: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
             f"Titel: {titel}",
-            f"Thema: {thema}",
+            f"Alarmierung: {thema}",
             "", "BERICHT:", "",
-        ] + inhalt.split('\n')
+        ] + inhalt.split('\n') + ([""]+reflexion_lines if reflexion_lines else [])
 
         para_xml = '\n'.join(
             f'        <sf:p sfa:ID="p{i}"><sf:content>{escape(ln)}</sf:content></sf:p>'

@@ -458,8 +458,9 @@ class ClaudeAPIHandler:
             f"(ERC-Leitlinien 2021, ACLS, DGAI-SOPs, Bundeseinheitlicher Curriculum Notfallsanitäter)\n"
             f"- NACA-Score, GCS und VAS müssen zur klinischen Situation passen\n"
             f"- Das EKG-Befund (falls relevant) muss zum Krankheitsbild passen\n"
-            f"- Realistische Patientendemographie (Alter, Geschlecht, Vorerkrankungen)\n\n"
-            f"Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
+            f"- Realistische Patientendemographie (Alter, Geschlecht, Vorerkrankungen)\n"
+            f"- ABCDE/OPQRST/SAMPLER-Felder KURZ halten: max. 10\u201312 W\u00f6rter je Buchstabe (Stichworte, keine langen S\u00e4tze)\n\n"
+            f"Antworte AUSSCHLIESSLICH mit einem g\u00fcltigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
             f'{{\n'
             f'  "krankheitsbild": "{krankheitsbild}",\n'
             f'  "stichwort": "RTW X – Kategorie: Kurzbezeichnung",\n'

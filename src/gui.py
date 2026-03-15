@@ -62,7 +62,7 @@ class ImportDialog(QDialog):
         self.titel_input = QLineEdit(daten.get('titel', ''))
         self.thema_input = QLineEdit(daten.get('thema', ''))
         form.addRow("Titel:", self.titel_input)
-        form.addRow("Thema:", self.thema_input)
+        form.addRow("Alarmierung:", self.thema_input)
         layout.addLayout(form)
 
         layout.addWidget(QLabel("Inhalt:"))
@@ -99,7 +99,7 @@ class NeuerBerichtDialog(QDialog):
         self.zusatz_input.setMaximumHeight(100)
         
         layout.addRow("Titel:", self.titel_input)
-        layout.addRow("Thema:", self.thema_input)
+        layout.addRow("Alarmierung:", self.thema_input)
         layout.addRow("Zusätzliche Infos:", self.zusatz_input)
         
         # Buttons
@@ -139,9 +139,9 @@ class BerichtBearbeitenDialog(QDialog):
         titel_layout.addWidget(self.titel_input)
         layout.addLayout(titel_layout)
         
-        # Thema
+        # Alarmierung
         thema_layout = QHBoxLayout()
-        thema_layout.addWidget(QLabel("Thema:"))
+        thema_layout.addWidget(QLabel("Alarmierung:"))
         self.thema_input = QLineEdit(bericht_data['thema'])
         thema_layout.addWidget(self.thema_input)
         layout.addLayout(thema_layout)
@@ -646,7 +646,7 @@ class MainWindow(QMainWindow):
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Suche:"))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Titel, Thema oder Inhalt durchsuchen...")
+        self.search_input.setPlaceholderText("Titel, Alarmierung oder Inhalt durchsuchen...")
         self.search_input.textChanged.connect(self.search_berichte)
         search_layout.addWidget(self.search_input)
         layout.addLayout(search_layout)
@@ -655,7 +655,7 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Titel", "Thema", "Erstellt am", "Aktualisiert am"]
+            ["ID", "Titel", "Alarmierung", "Erstellt am", "Aktualisiert am"]
         )
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -869,6 +869,18 @@ class MainWindow(QMainWindow):
         kontext_form.addRow("Kontext:", self.new_zusatz)
         layout.addWidget(kontext_group)
 
+        # ── Einsatzreflexion ────────────────────────────────────────────
+        reflexion_group = QGroupBox("Einsatzreflexion")
+        reflexion_form = QFormLayout()
+        reflexion_group.setLayout(reflexion_form)
+        self.new_reflexion = QTextEdit()
+        self.new_reflexion.setMaximumHeight(100)
+        self.new_reflexion.setPlaceholderText(
+            "Eigene Reflexion zum Einsatz (wird im Export als eigene Sektion ausgegeben)..."
+        )
+        reflexion_form.addRow("Reflexion:", self.new_reflexion)
+        layout.addWidget(reflexion_group)
+
         # ── Vorschau + Buttons ──────────────────────────────────────────
         outer_layout.addWidget(QLabel("Vorschau (generierter Bericht):"))
         self.preview_text = QTextEdit()
@@ -917,7 +929,7 @@ class MainWindow(QMainWindow):
 
         self.edit_list_table = QTableWidget()
         self.edit_list_table.setColumnCount(4)
-        self.edit_list_table.setHorizontalHeaderLabels(["ID", "Titel", "Thema", "Erstellt am"])
+        self.edit_list_table.setHorizontalHeaderLabels(["ID", "Titel", "Alarmierung", "Erstellt am"])
         self.edit_list_table.horizontalHeader().setStretchLastSection(True)
         self.edit_list_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.edit_list_table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -947,7 +959,7 @@ class MainWindow(QMainWindow):
 
         form_layout.addRow("Bericht-ID:", self.edit_id)
         form_layout.addRow("Titel:", self.edit_titel)
-        form_layout.addRow("Thema:", self.edit_thema)
+        form_layout.addRow("Alarmierung:", self.edit_thema)
         form_layout.addRow("Seitenzahl (KI):", self.edit_seitenzahl)
         form_layout.addRow("Kontext (KI):", self.edit_kontext)
         
@@ -957,6 +969,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Inhalt:"))
         self.edit_inhalt = QTextEdit()
         layout.addWidget(self.edit_inhalt)
+
+        layout.addWidget(QLabel("Einsatzreflexion:"))
+        self.edit_reflexion = QTextEdit()
+        self.edit_reflexion.setMaximumHeight(100)
+        self.edit_reflexion.setPlaceholderText("Eigene Reflexion zum Einsatz...")
+        layout.addWidget(self.edit_reflexion)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -1202,6 +1220,7 @@ class MainWindow(QMainWindow):
             self.edit_titel.setText(bericht['titel'])
             self.edit_thema.setText(bericht['thema'])
             self.edit_inhalt.setPlainText(bericht['inhalt'])
+            self.edit_reflexion.setPlainText(bericht.get('reflexion', '') or '')
     
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
@@ -1240,6 +1259,7 @@ class MainWindow(QMainWindow):
             self.edit_titel.setText(bericht['titel'])
             self.edit_thema.setText(bericht['thema'])
             self.edit_inhalt.setPlainText(bericht['inhalt'])
+            self.edit_reflexion.setPlainText(bericht.get('reflexion', '') or '')
             
             self.tabs.setCurrentIndex(2)  # Wechsle zu Tab "Ansehen/Bearbeiten"
     
@@ -1376,19 +1396,20 @@ class MainWindow(QMainWindow):
         titel = self.new_titel.text()
         thema = self.new_stichwort.text().strip()
         inhalt = self.preview_text.toPlainText()
+        reflexion = self.new_reflexion.toPlainText()
 
         if not titel or not thema or not inhalt:
             QMessageBox.warning(self, "Warnung", "Bitte Titel, Alarmierungsstichwort und generierten Inhalt ausfüllen.")
             return
         
-        bericht_id = self.db.bericht_erstellen(titel, thema, inhalt)
+        bericht_id = self.db.bericht_erstellen(titel, thema, inhalt, reflexion=reflexion)
 
         # Optional: PDF und Word generieren
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         try:
-            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs)
-            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs)
+            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -1402,6 +1423,7 @@ class MainWindow(QMainWindow):
         """Setzt das Formular für neue Berichte zurück"""
         self.new_titel.clear()
         self.new_zusatz.clear()
+        self.new_reflexion.clear()
         self.new_seitenzahl.setValue(2)
         self.new_datum.setDate(QDate.currentDate())
         self.new_uhrzeit.setTime(QTime.currentTime())
@@ -1428,15 +1450,16 @@ class MainWindow(QMainWindow):
         titel = self.edit_titel.text()
         thema = self.edit_thema.text()
         inhalt = self.edit_inhalt.toPlainText()
+        reflexion = self.edit_reflexion.toPlainText()
         
-        self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt)
+        self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt, reflexion=reflexion)
 
         # Optional: Neue Dokumente generieren
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         try:
-            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs)
-            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs)
+            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -1460,27 +1483,28 @@ class MainWindow(QMainWindow):
 
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
+        reflexion = bericht.get('reflexion', '') or ''
 
         try:
             if format_type == 'pdf':
                 filepath = self.report_gen.generate_pdf(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
                 )
             elif format_type == 'word':
                 filepath = self.report_gen.generate_word(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
                 )
             elif format_type == 'odf':
                 filepath = self.report_gen.generate_odf(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
                 )
             elif format_type == 'pages':
                 filepath = self.report_gen.generate_pages(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, reflexion
                 )
             else:
                 filepath = self.report_gen.generate_word(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
                 )
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
@@ -1501,18 +1525,19 @@ class MainWindow(QMainWindow):
 
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
+        reflexion = self.edit_reflexion.toPlainText()
 
         try:
             if format_type == 'pdf':
-                filepath = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs)
+                filepath = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
             elif format_type == 'word':
-                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs)
+                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
             elif format_type == 'odf':
-                filepath = self.report_gen.generate_odf(titel, thema, inhalt, bericht_id, ff, fs)
+                filepath = self.report_gen.generate_odf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
             elif format_type == 'pages':
-                filepath = self.report_gen.generate_pages(titel, thema, inhalt, bericht_id)
+                filepath = self.report_gen.generate_pages(titel, thema, inhalt, bericht_id, reflexion)
             else:
-                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs)
+                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
         except Exception as e:

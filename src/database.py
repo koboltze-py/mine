@@ -25,6 +25,8 @@ class DatabaseHandler:
                     thema TEXT NOT NULL,
                     inhalt TEXT NOT NULL,
                     reflexion TEXT DEFAULT '',
+                    abcde_json TEXT DEFAULT '',
+                    vitalwerte_json TEXT DEFAULT '',
                     erstellt_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     aktualisiert_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     pdf_pfad TEXT,
@@ -33,30 +35,40 @@ class DatabaseHandler:
                 )
             ''')
             conn.commit()
-            # Migration: reflexion-Spalte zu bestehenden DBs hinzufügen
-            try:
-                cursor.execute("ALTER TABLE einsatzberichte ADD COLUMN reflexion TEXT DEFAULT ''")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass  # Spalte existiert bereits
+            # Migration: neue Spalten zu bestehenden DBs hinzufügen
+            for col_sql in [
+                "ALTER TABLE einsatzberichte ADD COLUMN reflexion TEXT DEFAULT ''",
+                "ALTER TABLE einsatzberichte ADD COLUMN abcde_json TEXT DEFAULT ''",
+                "ALTER TABLE einsatzberichte ADD COLUMN vitalwerte_json TEXT DEFAULT ''",
+            ]:
+                try:
+                    cursor.execute(col_sql)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # Spalte existiert bereits
     
     def bericht_erstellen(self, titel: str, thema: str, inhalt: str,
                          reflexion: str = "",
+                         abcde_json: str = "",
+                         vitalwerte_json: str = "",
                          pdf_pfad: Optional[str] = None,
                          word_pfad: Optional[str] = None) -> int:
         """Erstellt einen neuen Einsatzbericht"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO einsatzberichte (titel, thema, inhalt, reflexion, pdf_pfad, word_pfad)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (titel, thema, inhalt, reflexion, pdf_pfad, word_pfad))
+                INSERT INTO einsatzberichte
+                    (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, pdf_pfad, word_pfad)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, pdf_pfad, word_pfad))
             conn.commit()
             return cursor.lastrowid
     
     def bericht_aktualisieren(self, bericht_id: int, titel: Optional[str] = None,
                              thema: Optional[str] = None, inhalt: Optional[str] = None,
                              reflexion: Optional[str] = None,
+                             abcde_json: Optional[str] = None,
+                             vitalwerte_json: Optional[str] = None,
                              pdf_pfad: Optional[str] = None, word_pfad: Optional[str] = None):
         """Aktualisiert einen bestehenden Einsatzbericht"""
         with sqlite3.connect(self.db_path) as conn:
@@ -77,6 +89,12 @@ class DatabaseHandler:
             if reflexion is not None:
                 updates.append("reflexion = ?")
                 params.append(reflexion)
+            if abcde_json is not None:
+                updates.append("abcde_json = ?")
+                params.append(abcde_json)
+            if vitalwerte_json is not None:
+                updates.append("vitalwerte_json = ?")
+                params.append(vitalwerte_json)
             if pdf_pfad is not None:
                 updates.append("pdf_pfad = ?")
                 params.append(pdf_pfad)

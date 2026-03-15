@@ -9,7 +9,8 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, KeepTogether
+from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from docx import Document
@@ -31,9 +32,22 @@ class ReportGenerator:
     _DEFAULT_FONT = "Helvetica"
     _DEFAULT_SIZE = 11
 
+    # Vitalwerte Labels und Einheiten
+    _VITAL_LABELS = [
+        ('rr',    'RR',     'mmHg'),
+        ('hf',    'HF',     '/min'),
+        ('spo2',  'SpO₂',   '%'),
+        ('spco',  'SpCO',   '%'),
+        ('af',    'AF',     '/min'),
+        ('bz',    'BZ',     'mmol/l'),
+        ('temp',  'Temp',   '°C'),
+        ('gcs',   'GCS',    ''),
+        ('etco2', 'EtCO₂',  'mmHg'),
+    ]
+
     def generate_pdf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                      font_family: str = "Arial", font_size: int = 11,
-                     reflexion: str = "") -> str:
+                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
         """
         Generiert ein PDF-Dokument des Einsatzberichts
         
@@ -78,8 +92,9 @@ class ReportGenerator:
             fontName=rl_font + '-Bold' if rl_font == 'Helvetica' else rl_font,
             fontSize=fs + 3,
             textColor='#333333',
-            spaceAfter=12,
-            spaceBefore=12
+            spaceAfter=6,
+            spaceBefore=10,
+            keepWithNext=1
         )
 
         body_style = ParagraphStyle(
@@ -102,8 +117,59 @@ class ReportGenerator:
         # Titel und Alarmierung
         story.append(Paragraph(f"<b>Titel:</b> {titel}", heading_style))
         story.append(Paragraph(f"<b>Alarmierung:</b> {thema}", body_style))
-        story.append(Spacer(1, 0.5*cm))
-        
+        story.append(Spacer(1, 0.4*cm))
+
+        # ABCDE-Tabelle
+        if abcde_data:
+            abcde = abcde_data.get('ABCDE', {})
+            rows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
+                     Paragraph(str(v), body_style)]
+                    for k, v in abcde.items() if str(v).strip()]
+            if rows:
+                tbl = Table(rows, colWidths=[1.8*cm, 15.2*cm])
+                tbl.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), rl_font),
+                    ('FONTSIZE', (0, 0), (-1, -1), fs),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
+                    ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.93, 0.93, 0.93)),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ]))
+                story.append(KeepTogether([
+                    Paragraph('<b>ABCDE-Schema</b>', heading_style),
+                    tbl,
+                ]))
+                story.append(Spacer(1, 0.3*cm))
+
+        # Vitalwerte-Tabelle
+        if vitalwerte:
+            vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
+            rows = []
+            for k, v in vitalwerte.items():
+                if str(v).strip():
+                    lbl, unit = vw_map.get(k, (k, ''))
+                    rows.append([Paragraph(f'<b>{lbl}</b>', body_style),
+                                 Paragraph(f"{v} {unit}".strip(), body_style)])
+            if rows:
+                tbl = Table(rows, colWidths=[2.5*cm, 14.5*cm])
+                tbl.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), rl_font),
+                    ('FONTSIZE', (0, 0), (-1, -1), fs),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
+                    ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.90, 0.95, 0.90)),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ]))
+                story.append(KeepTogether([
+                    Paragraph('<b>Vitalwerte / Messwerte</b>', heading_style),
+                    tbl,
+                ]))
+                story.append(Spacer(1, 0.4*cm))
+
         # Inhalt
         story.append(Paragraph("<b>BERICHT:</b>", heading_style))
         
@@ -131,7 +197,7 @@ class ReportGenerator:
     
     def generate_word(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                       font_family: str = "Arial", font_size: int = 11,
-                      reflexion: str = "") -> str:
+                      reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
         """
         Generiert ein Word-Dokument des Einsatzberichts
         
@@ -172,22 +238,65 @@ class ReportGenerator:
         p.add_run(thema)
         
         doc.add_paragraph()
+
+        # ABCDE-Tabelle
+        _fs = Pt(font_size or 11)
+        if abcde_data:
+            abcde = abcde_data.get('ABCDE', {})
+            abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
+            if abcde_rows:
+                h = doc.add_heading('ABCDE-Schema', 2)
+                h.paragraph_format.keep_with_next = True
+                tbl = doc.add_table(rows=len(abcde_rows), cols=2)
+                tbl.style = 'Table Grid'
+                for i, (key, val) in enumerate(abcde_rows):
+                    tbl.cell(i, 0).text = key
+                    tbl.cell(i, 1).text = val
+                    for cell in [tbl.cell(i, 0), tbl.cell(i, 1)]:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = _fs
+                doc.add_paragraph()
+
+        # Vitalwerte-Tabelle
+        if vitalwerte:
+            vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
+            vital_rows = []
+            for k, v in vitalwerte.items():
+                if str(v).strip():
+                    lbl, unit = vw_map.get(k, (k, ''))
+                    vital_rows.append((lbl, f"{v} {unit}".strip()))
+            if vital_rows:
+                h = doc.add_heading('Vitalwerte / Messwerte', 2)
+                h.paragraph_format.keep_with_next = True
+                tbl = doc.add_table(rows=len(vital_rows), cols=2)
+                tbl.style = 'Table Grid'
+                for i, (lbl, val) in enumerate(vital_rows):
+                    tbl.cell(i, 0).text = lbl
+                    tbl.cell(i, 1).text = val
+                    for cell in [tbl.cell(i, 0), tbl.cell(i, 1)]:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = _fs
+                doc.add_paragraph()
         
         # Bericht Überschrift
         doc.add_heading('BERICHT', 1)
         
-        # Inhalt
+        # Inhalt (keep_with_next auf Überschriften)
         for absatz in inhalt.split('\n'):
             if absatz.strip():
                 # Prüfe ob es eine Überschrift ist
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
-                    doc.add_heading(absatz.strip(), 2)
+                    h = doc.add_heading(absatz.strip(), 2)
+                    h.paragraph_format.keep_with_next = True
                 else:
                     doc.add_paragraph(absatz)
         
         # Reflexion
         if reflexion:
-            doc.add_heading('EINSATZREFLEXION', 1)
+            rh = doc.add_heading('EINSATZREFLEXION', 1)
+            rh.paragraph_format.keep_with_next = True
             for absatz in reflexion.split('\n'):
                 if absatz.strip():
                     doc.add_paragraph(absatz)
@@ -210,7 +319,7 @@ class ReportGenerator:
 
     def generate_odf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
                      font_family: str = "Arial", font_size: int = 11,
-                     reflexion: str = "") -> str:
+                     reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
         """Generiert ein ODF-Textdokument (.odt)"""
         from odf.opendocument import OpenDocumentText
         from odf.text import P, H
@@ -235,6 +344,31 @@ class ReportGenerator:
         doc.text.addElement(H(outlinelevel=2, text=f"Titel: {titel}"))
         doc.text.addElement(P(stylename=text_style, text=f"Alarmierung: {thema}"))
         doc.text.addElement(P(text=""))
+
+        # ABCDE-Schema als Abschnitt
+        if abcde_data:
+            abcde = abcde_data.get('ABCDE', {})
+            abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
+            if abcde_rows:
+                doc.text.addElement(H(outlinelevel=2, text="ABCDE-Schema"))
+                for key, val in abcde_rows:
+                    doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
+                doc.text.addElement(P(text=""))
+
+        # Vitalwerte als Abschnitt
+        if vitalwerte:
+            vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
+            vital_lines = []
+            for k, v in vitalwerte.items():
+                if str(v).strip():
+                    lbl, unit = vw_map.get(k, (k, ''))
+                    vital_lines.append(f"{lbl}:  {v} {unit}".strip())
+            if vital_lines:
+                doc.text.addElement(H(outlinelevel=2, text="Vitalwerte / Messwerte"))
+                for line in vital_lines:
+                    doc.text.addElement(P(stylename=text_style, text=line))
+                doc.text.addElement(P(text=""))
+
         doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
         doc.text.addElement(P(text=""))
 
@@ -257,7 +391,8 @@ class ReportGenerator:
         doc.save(filepath)
         return filepath
 
-    def generate_pages(self, titel: str, thema: str, inhalt: str, bericht_id: int, reflexion: str = "") -> str:
+    def generate_pages(self, titel: str, thema: str, inhalt: str, bericht_id: int,
+                       reflexion: str = "", abcde_data: dict = None, vitalwerte: dict = None) -> str:
         """Generiert ein Apple Pages-Dokument (.pages, iWork '09 Format)"""
 
         def escape(s: str) -> str:
@@ -267,13 +402,31 @@ class ReportGenerator:
         filename = f"bericht_{bericht_id}_{timestamp}.pages"
         filepath = os.path.join(self.output_dir, filename)
 
+        abcde_lines = []
+        if abcde_data:
+            abcde = abcde_data.get('ABCDE', {})
+            rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
+            if rows:
+                abcde_lines = ["ABCDE-Schema:"] + [f"  {k}  {v}" for k, v in rows] + [""]
+        vw_lines = []
+        if vitalwerte:
+            vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}
+            vw_parts = []
+            for k, v in vitalwerte.items():
+                if str(v).strip():
+                    lbl, unit = vw_map.get(k, (k, ''))
+                    vw_parts.append(f"  {lbl}:  {v} {unit}".strip())
+            if vw_parts:
+                vw_lines = ["Vitalwerte / Messwerte:"] + vw_parts + [""]
         reflexion_lines = (["EINSATZREFLEXION:", ""] + reflexion.split('\n')) if reflexion else []
-        lines = [
-            "EINSATZBERICHT", "",
-            f"Titel: {titel}",
-            f"Alarmierung: {thema}",
-            "", "BERICHT:", "",
-        ] + inhalt.split('\n') + ([""]+reflexion_lines if reflexion_lines else [])
+        lines = (
+            ["EINSATZBERICHT", "", f"Titel: {titel}", f"Alarmierung: {thema}", ""]
+            + abcde_lines
+            + vw_lines
+            + ["BERICHT:", ""]
+            + inhalt.split('\n')
+            + ([""]+reflexion_lines if reflexion_lines else [])
+        )
 
         para_xml = '\n'.join(
             f'        <sf:p sfa:ID="p{i}"><sf:content>{escape(ln)}</sf:content></sf:p>'

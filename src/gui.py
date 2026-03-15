@@ -398,6 +398,66 @@ class SchemaWidget(QGroupBox):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+class VitalwerteWidget(QGroupBox):
+    """Formular zur Erfassung der Vitalwerte / Messwerte (getrennt vom ABCDE-Schema)."""
+
+    FELDER = [
+        ('rr',    'RR',      'sys/dia z.B. 130/85',   'mmHg'),
+        ('hf',    'HF',      'z.B. 92',                '/min'),
+        ('spo2',  'SpO\u2082',  'z.B. 94',                '%'),
+        ('spco',  'SpCO',    'z.B. 0',                 '%'),
+        ('af',    'AF',      'z.B. 18',                '/min'),
+        ('bz',    'BZ',      'z.B. 5.8',               'mmol/l'),
+        ('temp',  'Temp',    'z.B. 36.8',              '\u00b0C'),
+        ('gcs',   'GCS',     'z.B. A4 V5 M6 = 15',    ''),
+        ('etco2', 'EtCO\u2082', 'z.B. 38',                'mmHg'),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__("Vitalwerte / Messwerte", parent)
+        form = QFormLayout()
+        form.setContentsMargins(6, 4, 6, 6)
+        form.setSpacing(4)
+        self.setLayout(form)
+        self.inputs = {}
+        for key, label, ph, unit in self.FELDER:
+            row_w = QWidget()
+            row_l = QHBoxLayout()
+            row_l.setContentsMargins(0, 0, 0, 0)
+            row_l.setSpacing(4)
+            row_w.setLayout(row_l)
+            inp = QLineEdit()
+            inp.setPlaceholderText(ph)
+            inp.setFixedWidth(150)
+            row_l.addWidget(inp)
+            if unit:
+                row_l.addWidget(QLabel(unit))
+            row_l.addStretch()
+            form.addRow(label + ":", row_w)
+            self.inputs[key] = inp
+
+    def get_vitalwerte(self) -> dict:
+        return {k: v.text().strip() for k, v in self.inputs.items() if v.text().strip()}
+
+    def get_text(self) -> str:
+        fmap = {k: (lbl, unit) for k, lbl, _, unit in self.FELDER}
+        parts = []
+        for k, v in self.get_vitalwerte().items():
+            lbl, unit = fmap.get(k, (k, ''))
+            parts.append(f"{lbl}: {v} {unit}".strip())
+        return "  ".join(parts)
+
+    def set_vitalwerte(self, data: dict):
+        for key, val in data.items():
+            if key in self.inputs and val:
+                self.inputs[key].setText(str(val))
+
+    def clear(self):
+        for inp in self.inputs.values():
+            inp.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 class ErfindenWorker(QThread):
     finished = Signal(dict)
     error = Signal(str)
@@ -857,6 +917,10 @@ class MainWindow(QMainWindow):
         schemata_vlayout.addWidget(simple_w)
         layout.addWidget(schemata_outer)
 
+        # ── Vitalwerte / Messwerte ──────────────────────────────────────
+        self.new_vitalwerte_widget = VitalwerteWidget()
+        layout.addWidget(self.new_vitalwerte_widget)
+
         # ── Zusätzlicher Kontext ────────────────────────────────────────
         kontext_group = QGroupBox("Zusätzlicher Kontext / eigene Angaben")
         kontext_form = QFormLayout()
@@ -969,6 +1033,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Inhalt:"))
         self.edit_inhalt = QTextEdit()
         layout.addWidget(self.edit_inhalt)
+
+        self.edit_vitalwerte_widget = VitalwerteWidget()
+        self.edit_vitalwerte_widget.setMaximumHeight(320)
+        layout.addWidget(self.edit_vitalwerte_widget)
 
         layout.addWidget(QLabel("Einsatzreflexion:"))
         self.edit_reflexion = QTextEdit()
@@ -1221,6 +1289,11 @@ class MainWindow(QMainWindow):
             self.edit_thema.setText(bericht['thema'])
             self.edit_inhalt.setPlainText(bericht['inhalt'])
             self.edit_reflexion.setPlainText(bericht.get('reflexion', '') or '')
+            import json as _json
+            vw = _json.loads(bericht.get('vitalwerte_json', '') or '{}')
+            self.edit_vitalwerte_widget.clear()
+            if vw:
+                self.edit_vitalwerte_widget.set_vitalwerte(vw)
     
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
@@ -1260,6 +1333,11 @@ class MainWindow(QMainWindow):
             self.edit_thema.setText(bericht['thema'])
             self.edit_inhalt.setPlainText(bericht['inhalt'])
             self.edit_reflexion.setPlainText(bericht.get('reflexion', '') or '')
+            import json as _json
+            vw = _json.loads(bericht.get('vitalwerte_json', '') or '{}')
+            self.edit_vitalwerte_widget.clear()
+            if vw:
+                self.edit_vitalwerte_widget.set_vitalwerte(vw)
             
             self.tabs.setCurrentIndex(2)  # Wechsle zu Tab "Ansehen/Bearbeiten"
     
@@ -1310,6 +1388,7 @@ class MainWindow(QMainWindow):
                 schemata.append(f"{name}: {val}" if val else name)
         medikamente = self.new_medikamente_widget.get_text()
         rettungsmittel = self.new_rettungsmittel_widget.get_text()
+        vitalwerte = self.new_vitalwerte_widget.get_vitalwerte()
 
         # Progress Dialog
         progress = QProgressDialog("Bericht wird mit Claude AI erstellt...", None, 0, 0, self)
@@ -1327,6 +1406,7 @@ class MainWindow(QMainWindow):
             'schemata': schemata,
             'medikamente': medikamente,
             'rettungsmittel': rettungsmittel,
+            'vitalwerte': vitalwerte,
         }
         self.worker = ClaudeWorker(self.claude, einsatz_daten)
         self.worker.finished.connect(lambda text: self.on_report_generated(text, progress))
@@ -1349,6 +1429,11 @@ class MainWindow(QMainWindow):
         self.new_medikamente_widget.set_medikamente(data.get('medikamente', ''))
         self.new_rettungsmittel_widget.set_text(data.get('rettungsmittel', ''))
         self.new_zusatz.setPlainText(data.get('zusatz', ''))
+        # Vitalwerte füllen
+        vw = data.get('vitalwerte', {})
+        self.new_vitalwerte_widget.clear()
+        if vw:
+            self.new_vitalwerte_widget.set_vitalwerte(vw)
         # Datum / Uhrzeit
         if data.get('datum'):
             qd = QDate.fromString(data['datum'], "dd.MM.yyyy")
@@ -1401,15 +1486,29 @@ class MainWindow(QMainWindow):
         if not titel or not thema or not inhalt:
             QMessageBox.warning(self, "Warnung", "Bitte Titel, Alarmierungsstichwort und generierten Inhalt ausfüllen.")
             return
-        
-        bericht_id = self.db.bericht_erstellen(titel, thema, inhalt, reflexion=reflexion)
+
+        import json as _json
+        schema_data = {}
+        for name, widget in self.schema_widgets.items():
+            if widget.isChecked():
+                schema_data[name] = {k: v.text().strip() for k, v in widget.inputs.items()}
+        for name, (cb, inp) in self.schema_simple.items():
+            if cb.isChecked():
+                schema_data[name] = inp.text().strip()
+        abcde_json = _json.dumps(schema_data, ensure_ascii=False)
+        vitalwerte_json = _json.dumps(self.new_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
+
+        bericht_id = self.db.bericht_erstellen(titel, thema, inhalt, reflexion=reflexion,
+                                               abcde_json=abcde_json, vitalwerte_json=vitalwerte_json)
 
         # Optional: PDF und Word generieren
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         try:
-            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
-            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                    abcde_data=schema_data, vitalwerte=self.new_vitalwerte_widget.get_vitalwerte())
+            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                     abcde_data=schema_data, vitalwerte=self.new_vitalwerte_widget.get_vitalwerte())
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -1424,6 +1523,7 @@ class MainWindow(QMainWindow):
         self.new_titel.clear()
         self.new_zusatz.clear()
         self.new_reflexion.clear()
+        self.new_vitalwerte_widget.clear()
         self.new_seitenzahl.setValue(2)
         self.new_datum.setDate(QDate.currentDate())
         self.new_uhrzeit.setTime(QTime.currentTime())
@@ -1451,15 +1551,25 @@ class MainWindow(QMainWindow):
         thema = self.edit_thema.text()
         inhalt = self.edit_inhalt.toPlainText()
         reflexion = self.edit_reflexion.toPlainText()
+        import json as _json
+        vitalwerte_json = _json.dumps(self.edit_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
+        # ABCDE aus DB beibehalten (kein Schema-Editor im Bearbeiten-Tab)
+        bericht_db = self.db.bericht_abrufen(bericht_id)
+        abcde_json = (bericht_db or {}).get('abcde_json', '') or ''
         
-        self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt, reflexion=reflexion)
+        self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt,
+                                       reflexion=reflexion, vitalwerte_json=vitalwerte_json)
 
         # Optional: Neue Dokumente generieren
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
+        abcde_data = _json.loads(abcde_json or '{}')
+        vitalwerte = self.edit_vitalwerte_widget.get_vitalwerte()
         try:
-            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
-            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+            pdf_path = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                    abcde_data=abcde_data, vitalwerte=vitalwerte)
+            word_path = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                     abcde_data=abcde_data, vitalwerte=vitalwerte)
             self.db.bericht_aktualisieren(bericht_id, pdf_pfad=pdf_path, word_pfad=word_path)
         except Exception as e:
             print(f"Fehler beim Generieren der Dokumente: {e}")
@@ -1484,27 +1594,35 @@ class MainWindow(QMainWindow):
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         reflexion = bericht.get('reflexion', '') or ''
+        import json as _json
+        abcde_data = _json.loads(bericht.get('abcde_json', '') or '{}')
+        vitalwerte = _json.loads(bericht.get('vitalwerte_json', '') or '{}')
 
         try:
             if format_type == 'pdf':
                 filepath = self.report_gen.generate_pdf(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
+                    abcde_data=abcde_data, vitalwerte=vitalwerte
                 )
             elif format_type == 'word':
                 filepath = self.report_gen.generate_word(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
+                    abcde_data=abcde_data, vitalwerte=vitalwerte
                 )
             elif format_type == 'odf':
                 filepath = self.report_gen.generate_odf(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
+                    abcde_data=abcde_data, vitalwerte=vitalwerte
                 )
             elif format_type == 'pages':
                 filepath = self.report_gen.generate_pages(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, reflexion
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, reflexion,
+                    abcde_data=abcde_data, vitalwerte=vitalwerte
                 )
             else:
                 filepath = self.report_gen.generate_word(
-                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion
+                    bericht['titel'], bericht['thema'], bericht['inhalt'], bericht_id, ff, fs, reflexion,
+                    abcde_data=abcde_data, vitalwerte=vitalwerte
                 )
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
@@ -1526,18 +1644,27 @@ class MainWindow(QMainWindow):
         ff = self.font_family_combo.currentText()
         fs = self.font_size_spin.value()
         reflexion = self.edit_reflexion.toPlainText()
+        import json as _json
+        bericht_db2 = self.db.bericht_abrufen(bericht_id)
+        abcde_data = _json.loads((bericht_db2 or {}).get('abcde_json', '') or '{}')
+        vitalwerte = self.edit_vitalwerte_widget.get_vitalwerte()
 
         try:
             if format_type == 'pdf':
-                filepath = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+                filepath = self.report_gen.generate_pdf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                        abcde_data=abcde_data, vitalwerte=vitalwerte)
             elif format_type == 'word':
-                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                         abcde_data=abcde_data, vitalwerte=vitalwerte)
             elif format_type == 'odf':
-                filepath = self.report_gen.generate_odf(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+                filepath = self.report_gen.generate_odf(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                        abcde_data=abcde_data, vitalwerte=vitalwerte)
             elif format_type == 'pages':
-                filepath = self.report_gen.generate_pages(titel, thema, inhalt, bericht_id, reflexion)
+                filepath = self.report_gen.generate_pages(titel, thema, inhalt, bericht_id, reflexion,
+                                                          abcde_data=abcde_data, vitalwerte=vitalwerte)
             else:
-                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion)
+                filepath = self.report_gen.generate_word(titel, thema, inhalt, bericht_id, ff, fs, reflexion,
+                                                         abcde_data=abcde_data, vitalwerte=vitalwerte)
 
             QMessageBox.information(self, "Erfolg", f"Bericht exportiert nach:\n{filepath}")
         except Exception as e:

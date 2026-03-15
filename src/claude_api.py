@@ -208,7 +208,8 @@ class ClaudeAPIHandler:
                                  seitenzahl: int = 2, datum: str = "",
                                  uhrzeit: str = "", stichwort: str = "",
                                  schemata: list = None, medikamente: str = "",
-                                 rettungsmittel: str = "") -> str:
+                                 rettungsmittel: str = "",
+                                 vitalwerte: dict = None) -> str:
         """
         Erstellt einen Einsatzbericht.
         Schreibstil und Format werden NUR aus den Beispielberichten abgeleitet (nicht der Inhalt).
@@ -224,6 +225,8 @@ class ClaudeAPIHandler:
             medikamente: Verabreichte Medikamente
             rettungsmittel: Beteiligte Rettungsmittel
         """
+        if vitalwerte is None:
+            vitalwerte = {}
         if schemata is None:
             schemata = []
         stil = self._stil_kontext()
@@ -239,6 +242,19 @@ class ClaudeAPIHandler:
             details.append(f"Alarmierungsstichwort: {stichwort}")
         if rettungsmittel:
             details.append(f"Beteiligte Rettungsmittel: {rettungsmittel}")
+        if vitalwerte:
+            vw_label = {
+                'rr': ('RR', 'mmHg'), 'hf': ('HF', '/min'), 'spo2': ('SpO2', '%'),
+                'spco': ('SpCO', '%'), 'af': ('AF', '/min'), 'bz': ('BZ', 'mmol/l'),
+                'temp': ('Temp', '\u00b0C'), 'gcs': ('GCS', ''), 'etco2': ('EtCO2', 'mmHg'),
+            }
+            vw_lines = []
+            for k, v in vitalwerte.items():
+                if str(v).strip():
+                    lbl, unit = vw_label.get(k, (k, ''))
+                    vw_lines.append(f"  {lbl}: {v} {unit}".strip())
+            if vw_lines:
+                details.append(f"Vitalwerte / Messwerte (im Bericht nat\u00fcrlich erw\u00e4hnen):\n" + "\n".join(vw_lines))
         if medikamente:
             # Medikamente als nummerierte Liste formatieren
             med_lines = [l.strip() for l in medikamente.splitlines() if l.strip()]
@@ -250,7 +266,9 @@ class ClaudeAPIHandler:
                 details.append(f"Verabreichte Medikamente: {medikamente}")
         if schemata:
             schema_text = "\n".join(f"  - {s}" for s in schemata)
-            details.append(f"Schemata (im Bericht vollständig ausführen, eingetragene Befunde verwenden):\n{schema_text}")
+            details.append(
+                f"ABCDE-Schema (NUR qualitative Befunde, KEINE Messwerte wie RR/HF/SpO2/BZ/Temp/GCS \u2013 diese sind in der Vitalwerte-Tabelle):\n{schema_text}"
+            )
         if zusaetzliche_infos:
             details.append(f"Zusätzliche Informationen / Kontext: {zusaetzliche_infos}")
         detail_block = "\n".join(details)
@@ -281,9 +299,9 @@ class ClaudeAPIHandler:
                 f"Erstelle einen professionellen Einsatzbericht für den Rettungsdienst.\n\n"
                 f"FORMATIERUNGSREGELN (zwingend einhalten):\n"
                 f"  - KEIN Markdown: keine Sternchen (*/**), keine #-Überschriften, kein __Fett__\n"
-                f"  - Abschnittsüberschriften als normalen Text ohne Sonderzeichen\n"
-                f"  - Schema-Einträge im Format: Buchstabe= Text  (Beispiel: 'A= Atemweg frei')\n"
-                f"  - Messwerte im Format: Kürzel- Wert  (Beispiel: 'RR- 130/85; HF- 92')\n"
+                f"  - Schema-Eintr\u00e4ge im Format: Buchstabe= Text  (Beispiel: 'A= Atemweg frei')\n"
+                f"  - ABCDE-Schema im Bericht NUR qualitative Befunde (kein RR/HF/SpO2/BZ/Temp/GCS)\n"
+                f"  - Vitalwerte trotzdem nat\u00fcrlich im Flie\u00dftext erw\u00e4hnen\n"
                 f"  - Jedes Medikament bekommt eine eigene Sektion mit: Arzneimittelgruppe, Indikation,\n"
                 f"    Kontraindikation, UAW, Dosierung/Durchführung\n\n"
                 f"EINSATZ-DATEN:\n{detail_block}\n\n"
@@ -459,7 +477,8 @@ class ClaudeAPIHandler:
             f"- NACA-Score, GCS und VAS müssen zur klinischen Situation passen\n"
             f"- Das EKG-Befund (falls relevant) muss zum Krankheitsbild passen\n"
             f"- Realistische Patientendemographie (Alter, Geschlecht, Vorerkrankungen)\n"
-            f"- ABCDE/OPQRST/SAMPLER-Felder KURZ halten: max. 10\u201312 W\u00f6rter je Buchstabe (Stichworte, keine langen S\u00e4tze)\n\n"
+            f"- ABCDE/OPQRST/SAMPLER-Felder KURZ halten: max. 10\u201312 W\u00f6rter je Buchstabe (Stichworte, keine langen S\u00e4tze)\n"
+            f"- ABCDE NUR qualitative Befunde (A/B/C/D/E): KEINE Zahlen wie RR, HF, SpO2, BZ, Temp, GCS \u2013 diese kommen ausschlie\u00dflich in 'vitalwerte'\n\n"
             f"Antworte AUSSCHLIESSLICH mit einem g\u00fcltigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
             f'{{\n'
             f'  "krankheitsbild": "{krankheitsbild}",\n'
@@ -469,11 +488,11 @@ class ClaudeAPIHandler:
             f'  "rettungsmittel": "z.B. RTW, NEF",\n'
             f'  "medikamente": "Wirkstoff Dosis Route, ...",\n'
             f'  "abcde": {{\n'
-            f'    "a": "Atemweg-Befund",\n'
-            f'    "b": "SpO2 XX%, AF XX/min, Atemgeräusch",\n'
-            f'    "c": "RR XXX/XX mmHg, HF XX/min, Rekapillarisierung",\n'
-            f'    "d": "GCS XX (A+V+M), BZ X.X mmol/l, Pupillen",\n'
-            f'    "e": "Temp XX.X°C, Haut, Bodycheck-Befund"\n'
+            f'    "a": "Atemweg qualitativ (frei/verlegt/gesichert) - KEINE Messwerte",\n'
+            f'    "b": "Atemger\u00e4usch, Ventilationsqualit\u00e4t - KEIN SpO2/AF",\n'
+            f'    "c": "Kreislaufbefund qualitativ, Rekapillarisierung - KEIN RR/HF",\n'
+            f'    "d": "Bewusstsein, Neurologie, Pupillen - KEIN GCS/BZ",\n'
+            f'    "e": "Haut, Bodycheck - KEINE Temperaturzahl"\n'
             f'  }},\n'
             f'  "opqrst": {{\n'
             f'    "o": "Onset",\n'
@@ -496,8 +515,17 @@ class ClaudeAPIHandler:
             f'  "gcs": "AX VX MX = XX",\n'
             f'  "vas": "X/10",\n'
             f'  "ekg": "EKG-Befund oder nicht erhoben",\n'
-            f'  "zusatz": "Patientenalter, Geschlecht, besondere Situation, Angehörige etc.",\n'
-            f'  "verifikation": "Kurze Bestätigung der medizinischen Korrektheit inkl. Leitlinienreferenz"\n'
+            f'  "zusatz": "Patientenalter, Geschlecht, besondere Situation, Angehörige etc.",\n'            f'  "vitalwerte": {{\n'
+            f'    "rr": "sys/dia z.B. 130/85",\n'
+            f'    "hf": "z.B. 92",\n'
+            f'    "spo2": "z.B. 94",\n'
+            f'    "spco": "z.B. 0",\n'
+            f'    "af": "z.B. 18",\n'
+            f'    "bz": "z.B. 5.8",\n'
+            f'    "temp": "z.B. 36.8",\n'
+            f'    "gcs": "z.B. A4 V5 M6 = 15",\n'
+            f'    "etco2": "z.B. 38 oder leer"\n'
+            f'  }},\n'            f'  "verifikation": "Kurze Bestätigung der medizinischen Korrektheit inkl. Leitlinienreferenz"\n'
             f'}}'
         )
         import json, re

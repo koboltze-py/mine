@@ -27,6 +27,7 @@ class DatabaseHandler:
                     reflexion TEXT DEFAULT '',
                     abcde_json TEXT DEFAULT '',
                     vitalwerte_json TEXT DEFAULT '',
+                    medikamente_json TEXT DEFAULT '',
                     erstellt_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     aktualisiert_am TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     pdf_pfad TEXT,
@@ -40,6 +41,7 @@ class DatabaseHandler:
                 "ALTER TABLE einsatzberichte ADD COLUMN reflexion TEXT DEFAULT ''",
                 "ALTER TABLE einsatzberichte ADD COLUMN abcde_json TEXT DEFAULT ''",
                 "ALTER TABLE einsatzberichte ADD COLUMN vitalwerte_json TEXT DEFAULT ''",
+                "ALTER TABLE einsatzberichte ADD COLUMN medikamente_json TEXT DEFAULT ''",
             ]:
                 try:
                     cursor.execute(col_sql)
@@ -51,6 +53,7 @@ class DatabaseHandler:
                          reflexion: str = "",
                          abcde_json: str = "",
                          vitalwerte_json: str = "",
+                         medikamente_json: str = "",
                          pdf_pfad: Optional[str] = None,
                          word_pfad: Optional[str] = None) -> int:
         """Erstellt einen neuen Einsatzbericht"""
@@ -58,9 +61,9 @@ class DatabaseHandler:
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO einsatzberichte
-                    (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, pdf_pfad, word_pfad)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, pdf_pfad, word_pfad))
+                    (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, medikamente_json, pdf_pfad, word_pfad)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (titel, thema, inhalt, reflexion, abcde_json, vitalwerte_json, medikamente_json, pdf_pfad, word_pfad))
             conn.commit()
             return cursor.lastrowid
     
@@ -69,6 +72,7 @@ class DatabaseHandler:
                              reflexion: Optional[str] = None,
                              abcde_json: Optional[str] = None,
                              vitalwerte_json: Optional[str] = None,
+                             medikamente_json: Optional[str] = None,
                              pdf_pfad: Optional[str] = None, word_pfad: Optional[str] = None):
         """Aktualisiert einen bestehenden Einsatzbericht"""
         with sqlite3.connect(self.db_path) as conn:
@@ -95,6 +99,9 @@ class DatabaseHandler:
             if vitalwerte_json is not None:
                 updates.append("vitalwerte_json = ?")
                 params.append(vitalwerte_json)
+            if medikamente_json is not None:
+                updates.append("medikamente_json = ?")
+                params.append(medikamente_json)
             if pdf_pfad is not None:
                 updates.append("pdf_pfad = ?")
                 params.append(pdf_pfad)

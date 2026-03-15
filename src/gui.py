@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QComboBox, QGroupBox, QCheckBox, QScrollArea, QSplitter)
 from PySide6.QtCore import Qt, QThread, Signal, QDate, QTime
 from PySide6.QtWidgets import QDateEdit, QTimeEdit
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QFont, QIcon, QSyntaxHighlighter, QTextCharFormat, QColor
 import sys
 import os
 
@@ -30,6 +30,21 @@ class ClaudeWorker(QThread):
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
+
+
+# Marker der als Seitenumbruch gilt (für Preview und Export)
+PAGE_BREAK_MARKER = "\u2500\u2500\u2500 SEITENUMBRUCH \u2500\u2500\u2500"
+
+
+class PageBreakHighlighter(QSyntaxHighlighter):
+    """Hebt Seitenumbruch-Zeilen im Preview violett hervor."""
+    def highlightBlock(self, text: str):
+        if PAGE_BREAK_MARKER in text:
+            fmt = QTextCharFormat()
+            fmt.setBackground(QColor("#ede7f6"))
+            fmt.setForeground(QColor("#7b1fa2"))
+            fmt.setFontBold(True)
+            self.setFormat(0, len(text), fmt)
 
 
 class MedikamentDetailsWorker(QThread):
@@ -1329,10 +1344,47 @@ class MainWindow(QMainWindow):
             "Nach Klick auf  🤖 Bericht generieren  erscheint hier der fertige Text zur Kontrolle.\n"
             "Erst nach Prüfung auf  💾 Bericht speichern  klicken.")
         _prev_hint.setWordWrap(True)
-        _prev_hint.setStyleSheet("color:#888; font-style:italic; padding:2px 0 6px 0;")
+        _prev_hint.setStyleSheet("color:#888; font-style:italic; padding:2px 0 4px 0;")
         preview_l.addWidget(_prev_hint)
+
+        # ─ Seitenumbruch-Toolbar ──────────────────────────────────────
+        _pb_bar = QHBoxLayout()
+        _pb_bar.setSpacing(4)
+        _pb_lbl = QLabel("Seitenumbrüche:")
+        _pb_lbl.setStyleSheet("font-weight:bold; font-size:11px;")
+        _pb_bar.addWidget(_pb_lbl)
+        _pb_insert_btn = QPushButton("✂️  Umbruch hier einfügen")
+        _pb_insert_btn.setToolTip(
+            "Fügt an der aktuellen Cursor-Position einen Seitenumbruch ein.\n"
+            "Im Export wird an dieser Stelle eine neue Seite begonnen.")
+        _pb_insert_btn.setStyleSheet(
+            "QPushButton{border:1px solid #7b1fa2;color:#7b1fa2;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#7b1fa2;color:#fff;}")
+        _pb_insert_btn.clicked.connect(self._insert_pagebreak)
+        _pb_bar.addWidget(_pb_insert_btn)
+        _pb_remove_btn = QPushButton("❌  Umbruch entfernen")
+        _pb_remove_btn.setToolTip(
+            "Entfernt den nächsten Seitenumbruch ab der Cursor-Position.")
+        _pb_remove_btn.setStyleSheet(
+            "QPushButton{border:1px solid #c62828;color:#c62828;border-radius:3px;"
+            "padding:3px 8px;font-size:11px;background:transparent;}"
+            "QPushButton:hover{background:#c62828;color:#fff;}")
+        _pb_remove_btn.clicked.connect(self._remove_pagebreak)
+        _pb_bar.addWidget(_pb_remove_btn)
+        _pb_bar.addStretch()
+        _pb_hint = QLabel("│  ——— SEITENUMBRUCH ———  markiert eine neue Seite im Export")
+        _pb_hint.setStyleSheet("color:#7b1fa2;font-size:10px;font-style:italic;")
+        _pb_bar.addWidget(_pb_hint)
+        preview_l.addLayout(_pb_bar)
+
         self.preview_text = QTextEdit()
-        self.preview_text.setReadOnly(True)
+        self.preview_text.setReadOnly(False)  # editierbar: Seitenumbrüche manuell platzierbar
+        self.preview_text.setPlaceholderText(
+            "Generierter Bericht erscheint hier …\n"
+            "Tipp: Cursor an gewünschter Stelle platzieren, dann '✂ Umbruch einfügen' klicken.")
+        # Seitenumbruch-Zeilen visuell hervorheben via QSyntaxHighlighter
+        self._pb_highlighter = PageBreakHighlighter(self.preview_text.document())
         preview_l.addWidget(self.preview_text, 1)
         main_splitter.addWidget(preview_panel)
         main_splitter.setSizes([560, 440])
@@ -1712,6 +1764,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(_med_lbl)
         self.edit_medikamente_widget = MedikamentListWidget()
         layout.addWidget(self.edit_medikamente_widget)
+        _ki_med_edit_btn = QPushButton("🤖  KI-Details abrufen (Wirkweise / NW / KI)")
+        _ki_med_edit_btn.setToolTip(
+            "Claude AI sucht für alle eingetragenen Medikamente automatisch:\n"
+            "Wirkweise, Nebenwirkungen, Kontraindikation, Indikation, Dosierung uvm.")
+        _ki_med_edit_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:5px 12px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _ki_med_edit_btn.clicked.connect(self._ki_medikament_details_edit)
+        layout.addWidget(_ki_med_edit_btn)
 
         # Inhalt
         _inhalt_header = QHBoxLayout()
@@ -2069,6 +2131,80 @@ class MainWindow(QMainWindow):
                 "Kein PDF für diesen Bericht vorhanden.\n"
                 "Bitte den Bericht zuerst als PDF exportieren."
             )
+
+    def _insert_pagebreak(self):
+        """Fügt einen Seitenumbruch-Marker an der aktuellen Cursor-Position im Preview ein."""
+        cursor = self.preview_text.textCursor()
+        # Zeilenanfang + Marker als eigene Zeile
+        cursor.movePosition(cursor.MoveOperation.EndOfLine)
+        cursor.insertText(f"\n{PAGE_BREAK_MARKER}\n")
+        self.preview_text.setTextCursor(cursor)
+
+    def _remove_pagebreak(self):
+        """Entfernt den nächsten Seitenumbruch-Marker ab der aktuellen Cursor-Position."""
+        text = self.preview_text.toPlainText()
+        pos = self.preview_text.textCursor().position()
+        idx = text.find(PAGE_BREAK_MARKER, pos)
+        if idx == -1:
+            idx = text.find(PAGE_BREAK_MARKER)  # von vorne suchen falls nichts dahinter
+        if idx == -1:
+            QMessageBox.information(self, "Hinweis", "Kein Seitenumbruch gefunden.")
+            return
+        # Ganze Zeile inkl. Zeilenumbruch davor/danach entfernen
+        start = text.rfind('\n', 0, idx)
+        start = 0 if start == -1 else start
+        end = text.find('\n', idx + len(PAGE_BREAK_MARKER))
+        end = len(text) if end == -1 else end + 1
+        cursor = self.preview_text.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(end, cursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        self.preview_text.setTextCursor(cursor)
+
+    def _ki_medikament_details_edit(self):
+        """KI schlägt Details für alle Medikamente im Bearbeiten-Tab nach."""
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        meds = self.edit_medikamente_widget.get_medikamente()
+        namen = [m['name'] for m in meds if m['name'].strip()]
+        if not namen:
+            QMessageBox.information(
+                self, "Hinweis", "Bitte zuerst mindestens ein Medikament eintragen.")
+            return
+        progress = QProgressDialog(
+            f"KI sucht Details für {len(namen)} Medikament(e) …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._med_details_worker_edit = MedikamentDetailsWorker(self.claude, namen)
+        self._med_details_worker_edit.finished.connect(
+            lambda results: self._on_med_details_fetched_edit(results, progress))
+        self._med_details_worker_edit.error.connect(
+            lambda err: (progress.close(),
+                         QMessageBox.critical(
+                             self, "KI-Fehler",
+                             f"Details konnten nicht abgerufen werden:\n{err}")))
+        self._med_details_worker_edit.start()
+
+    def _on_med_details_fetched_edit(self, results: list, progress):
+        """Trägt KI-Details in das Medikamente-Widget des Bearbeiten-Tabs ein."""
+        progress.close()
+        count = 0
+        for item in results:
+            name = item.get('name', '')
+            if not name:
+                continue
+            self.edit_medikamente_widget.update_row_details(
+                name,
+                {k: item.get(k, '') for k in (
+                    'wirkweise', 'nebenwirkungen', 'kontraindikation',
+                    'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')}
+            )
+            count += 1
+        QMessageBox.information(
+            self, "Fertig",
+            f"Details für {count} Medikament(e) wurden eingetragen.\n"
+            "Öffne den ℹ Details-Button einer Zeile, um alles zu prüfen.")
 
     def _ki_reflexion_new(self):
         """KI formuliert Reflexion aus Stichwörtern im Neuer-Bericht-Tab."""

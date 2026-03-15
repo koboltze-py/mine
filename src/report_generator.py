@@ -17,6 +17,9 @@ from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+# Seitenumbruch-Marker (muss mit gui.py übereinstimmen)
+PAGE_BREAK_MARKER = "\u2500\u2500\u2500 SEITENUMBRUCH \u2500\u2500\u2500"
+
 
 class ReportGenerator:
     def __init__(self, output_dir: str = "reports"):
@@ -131,11 +134,22 @@ class ReportGenerator:
         
         # Story (Inhalt)
         story = []
-        
+
+        # Hilfs-Funktion: Textblock in story einfügen, PAGE_BREAK_MARKER berücksichtigen
+        def _add_text_block(text: str):
+            for absatz in text.split('\n'):
+                if PAGE_BREAK_MARKER in absatz:
+                    story.append(PageBreak())
+                elif absatz.strip() and not self._is_schema_line(absatz):
+                    if absatz.strip().isupper() or absatz.strip()[0:1].isdigit():
+                        story.append(Paragraph(absatz, heading_style))
+                    else:
+                        story.append(Paragraph(absatz, body_style))
+
         # Titel
         story.append(Paragraph("EINSATZBERICHT", title_style))
         story.append(Spacer(1, 0.5*cm))
-        
+
         # Titel und Alarmierung
         story.append(Paragraph(f"<b>Titel:</b> {titel}", heading_style))
         story.append(Paragraph(f"<b>Alarmierung:</b> {thema}", body_style))
@@ -146,12 +160,7 @@ class ReportGenerator:
 
         # Text vor dem ABCDE-Block
         _before, _after = self._split_at_abcde(inhalt)
-        for absatz in _before.split('\n'):
-            if absatz.strip() and not self._is_schema_line(absatz):
-                if absatz.strip().isupper() or absatz.strip()[0].isdigit():
-                    story.append(Paragraph(absatz, heading_style))
-                else:
-                    story.append(Paragraph(absatz, body_style))
+        _add_text_block(_before)
 
         # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
@@ -302,16 +311,11 @@ class ReportGenerator:
 
         # Text nach dem ABCDE-Block
         if _after is not None:
-            for absatz in _after.split('\n'):
-                if absatz.strip() and not self._is_schema_line(absatz):
-                    if absatz.strip().isupper() or absatz.strip()[0].isdigit():
-                        story.append(Paragraph(absatz, heading_style))
-                    else:
-                        story.append(Paragraph(absatz, body_style))
-        
+            _add_text_block(_after)
+
         # Reflexion
         if reflexion:
-            story.append(Spacer(1, 0.5*cm))
+            story.append(PageBreak())
             story.append(Paragraph("<b>EINSATZREFLEXION:</b>", heading_style))
             for absatz in reflexion.split('\n'):
                 if absatz.strip():
@@ -374,7 +378,9 @@ class ReportGenerator:
         # Text vor dem ABCDE-Block
         _before, _after = self._split_at_abcde(inhalt)
         for absatz in _before.split('\n'):
-            if absatz.strip() and not self._is_schema_line(absatz):
+            if PAGE_BREAK_MARKER in absatz:
+                doc.add_page_break()
+            elif absatz.strip() and not self._is_schema_line(absatz):
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                     h = doc.add_heading(absatz.strip(), 2)
                     h.paragraph_format.keep_with_next = True
@@ -481,15 +487,18 @@ class ReportGenerator:
         # Text nach dem ABCDE-Block
         if _after is not None:
             for absatz in _after.split('\n'):
-                if absatz.strip() and not self._is_schema_line(absatz):
+                if PAGE_BREAK_MARKER in absatz:
+                    doc.add_page_break()
+                elif absatz.strip() and not self._is_schema_line(absatz):
                     if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                         h = doc.add_heading(absatz.strip(), 2)
                         h.paragraph_format.keep_with_next = True
                     else:
                         doc.add_paragraph(absatz)
-        
+
         # Reflexion
         if reflexion:
+            doc.add_page_break()
             rh = doc.add_heading('EINSATZREFLEXION', 1)
             rh.paragraph_format.keep_with_next = True
             for absatz in reflexion.split('\n'):
@@ -541,13 +550,23 @@ class ReportGenerator:
         doc.text.addElement(P(stylename=text_style, text=f"Alarmierung: {thema}"))
         doc.text.addElement(P(text=""))
 
+        # Seitenumbruch-Stil
+        pb_style = Style(name="PageBreak", family="paragraph")
+        pb_style.addElement(ParagraphProperties(breakbefore="page"))
+        doc.automaticstyles.addElement(pb_style)
+
+        def _odf_pagebreak():
+            doc.text.addElement(P(stylename=pb_style, text=""))
+
         doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
         doc.text.addElement(P(text=""))
 
         # Text vor dem ABCDE-Block
         _before, _after = self._split_at_abcde(inhalt)
         for absatz in _before.split('\n'):
-            if absatz.strip() and not self._is_schema_line(absatz):
+            if PAGE_BREAK_MARKER in absatz:
+                _odf_pagebreak()
+            elif absatz.strip() and not self._is_schema_line(absatz):
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                     doc.text.addElement(H(outlinelevel=3, text=absatz))
                 else:
@@ -643,7 +662,9 @@ class ReportGenerator:
         # Text nach dem ABCDE-Block
         if _after is not None:
             for absatz in _after.split('\n'):
-                if absatz.strip() and not self._is_schema_line(absatz):
+                if PAGE_BREAK_MARKER in absatz:
+                    _odf_pagebreak()
+                elif absatz.strip() and not self._is_schema_line(absatz):
                     if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                         doc.text.addElement(H(outlinelevel=3, text=absatz))
                     else:
@@ -652,7 +673,7 @@ class ReportGenerator:
                     doc.text.addElement(P(text=""))
 
         if reflexion:
-            doc.text.addElement(P(text=""))
+            _odf_pagebreak()
             doc.text.addElement(H(outlinelevel=2, text="EINSATZREFLEXION:"))
             for absatz in reflexion.split('\n'):
                 if absatz.strip():
@@ -693,8 +714,10 @@ class ReportGenerator:
                 vw_lines = ["Vitalwerte / Messwerte:"] + vw_parts + [""]
         reflexion_lines = (["EINSATZREFLEXION:", ""] + reflexion.split('\n')) if reflexion else []
         _before, _after = self._split_at_abcde(inhalt)
-        before_lines = [l for l in _before.split('\n') if not self._is_schema_line(l)]
-        after_lines = [l for l in (_after.split('\n') if _after is not None else []) if not self._is_schema_line(l)]
+        before_lines = [l for l in _before.split('\n')
+                        if not self._is_schema_line(l) and PAGE_BREAK_MARKER not in l]
+        after_lines = [l for l in (_after.split('\n') if _after is not None else [])
+                       if not self._is_schema_line(l) and PAGE_BREAK_MARKER not in l]
         other_schema_lines = []
         for _sname, _svals in (abcde_data or {}).items():
             if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):

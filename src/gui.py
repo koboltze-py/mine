@@ -271,7 +271,8 @@ class MedikamentListWidget(QWidget):
         self.add_row()
 
     def add_row(self, name="", dosis="", applikation="i.v.",
-                 wirkweise="", nebenwirkungen="", kontraindikation=""):
+                 wirkweise="", nebenwirkungen="", kontraindikation="",
+                 indikation="", dosierung_info="", arzneimittelgruppe="", inkubationszeit=""):
         row_w = QWidget()
         row_l = QHBoxLayout()
         row_l.setContentsMargins(0, 0, 0, 0)
@@ -298,11 +299,24 @@ class MedikamentListWidget(QWidget):
         else:
             app_combo.setCurrentText(applikation)
 
-        details = {'wirkweise': wirkweise, 'nebenwirkungen': nebenwirkungen,
-                   'kontraindikation': kontraindikation}
+        details = {
+            'wirkweise': wirkweise, 'nebenwirkungen': nebenwirkungen,
+            'kontraindikation': kontraindikation, 'indikation': indikation,
+            'dosierung': dosierung_info, 'arzneimittelgruppe': arzneimittelgruppe,
+            'inkubationszeit': inkubationszeit,
+        }
         details_btn = QPushButton("ℹ Details")
-        details_btn.setToolTip("Wirkweise, Nebenwirkungen, Kontraindikation eintragen")
-        details_btn.setFixedWidth(80)
+        details_btn.setToolTip(
+            "Alle pharmazeutischen Informationen anzeigen / bearbeiten\n"
+            "(Wirkweise, NW, Kontraindikation, Indikation, Dosierung …)\n"
+            "Tipp: Erst Medikament eintragen, dann KI-Details abrufen lassen.")
+        details_btn.setFixedWidth(90)
+        _detail_keys = ('wirkweise', 'nebenwirkungen', 'kontraindikation')
+        if any(details.get(k) for k in _detail_keys):
+            details_btn.setText("✅ Details")
+            details_btn.setStyleSheet(
+                "QPushButton{border:2px solid #388E3C;color:#388E3C;border-radius:3px;}")
+        details['_btn'] = details_btn  # Referenz für spätere Stil-Updates
         details_btn.clicked.connect(lambda: self._open_details(name_edit, details))
 
         rm_btn = QPushButton("✕")
@@ -321,33 +335,58 @@ class MedikamentListWidget(QWidget):
     def _open_details(self, name_edit, details):
         dlg = QDialog(self)
         dlg.setWindowTitle(f"Details: {name_edit.text() or 'Medikament'}")
-        dlg.setMinimumWidth(460)
+        dlg.setMinimumWidth(530)
         form = QFormLayout(dlg)
-        form.setSpacing(8)
-        ww = QTextEdit()
-        ww.setMaximumHeight(65)
-        ww.setPlaceholderText("z.B. Hemmung der Cyclooxygenase, analgetisch, antipyretisch …")
-        ww.setPlainText(details.get('wirkweise', ''))
-        form.addRow("Wirkweise:", ww)
-        nw = QTextEdit()
-        nw.setMaximumHeight(65)
-        nw.setPlaceholderText("z.B. Magenreizung, Blutungsneigung, Bronchospasmus …")
-        nw.setPlainText(details.get('nebenwirkungen', ''))
-        form.addRow("Nebenwirkungen:", nw)
-        ki = QTextEdit()
-        ki.setMaximumHeight(65)
-        ki.setPlaceholderText("z.B. Magen-/Darmulzera, Gerinnungsstörung, ASS-Allergie …")
-        ki.setPlainText(details.get('kontraindikation', ''))
-        form.addRow("Kontraindikation:", ki)
+        form.setSpacing(6)
+
+        def _te(placeholder, key):
+            te = QTextEdit()
+            te.setMaximumHeight(58)
+            te.setPlaceholderText(placeholder)
+            te.setPlainText(details.get(key, ''))
+            return te
+
+        ww  = _te("z.B. Hemmung der Cyclooxygenase, analgetisch, antipyretisch …", 'wirkweise')
+        nw  = _te("z.B. Magenreizung, Blutungsneigung, Bronchospasmus …",          'nebenwirkungen')
+        ki  = _te("z.B. Magen-/Darmulzera, Gerinnungsstörung, ASS-Allergie …",    'kontraindikation')
+        ind = _te("z.B. Schmerzen VAS ≥ 5, Analgesie bei Trauma …",                 'indikation')
+        dos = _te("z.B. 0,1 mg/kg i.v., titrierend bis VAS ≤ 3 …",                 'dosierung')
+        agr = _te("z.B. Opioid-Analgetikum, NSAID …",                              'arzneimittelgruppe')
+        ink = _te("z.B. Wirkungseintritt 5–15 min nach i.v.-Gabe …",               'inkubationszeit')
+
+        form.addRow("Wirkweise:",              ww)
+        form.addRow("Nebenwirkungen:",         nw)
+        form.addRow("Kontraindikation:",       ki)
+        form.addRow("Indikation:",             ind)
+        form.addRow("Dosierung/Durchführung:", dos)
+        form.addRow("Arzneimittelgruppe:",     agr)
+        form.addRow("Wirkungseintritt:",       ink)
+
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btns.accepted.connect(lambda: (
+
+        def _on_ok():
             details.update({
-                'wirkweise': ww.toPlainText().strip(),
-                'nebenwirkungen': nw.toPlainText().strip(),
+                'wirkweise':       ww.toPlainText().strip(),
+                'nebenwirkungen':  nw.toPlainText().strip(),
                 'kontraindikation': ki.toPlainText().strip(),
-            }),
+                'indikation':      ind.toPlainText().strip(),
+                'dosierung':       dos.toPlainText().strip(),
+                'arzneimittelgruppe': agr.toPlainText().strip(),
+                'inkubationszeit': ink.toPlainText().strip(),
+            })
+            _filled = any(details.get(k) for k in ('wirkweise', 'nebenwirkungen', 'kontraindikation'))
+            btn = details.get('_btn')
+            if btn:
+                if _filled:
+                    btn.setText("✅ Details")
+                    btn.setStyleSheet(
+                        "QPushButton{border:2px solid #388E3C;color:#388E3C;border-radius:3px;}")
+                else:
+                    btn.setText("ℹ Details")
+                    btn.setStyleSheet("")
             dlg.accept()
-        ))
+
+        btns.accepted.connect(_on_ok)
         btns.rejected.connect(dlg.reject)
         form.addRow(btns)
         dlg.exec()
@@ -361,18 +400,22 @@ class MedikamentListWidget(QWidget):
                 break
 
     def get_medikamente(self) -> list:
-        """Gibt Liste von dicts zurück: [{'name', 'dosis', 'applikation', 'wirkweise', 'nebenwirkungen', 'kontraindikation'}]"""
+        """Gibt Liste von dicts zurück mit allen Feldern inklusive KI-Details."""
         result = []
         for name_edit, dosis_edit, app_combo, details, _ in self._rows:
             name = name_edit.text().strip()
             if name:
                 result.append({
-                    'name': name,
-                    'dosis': dosis_edit.text().strip(),
-                    'applikation': app_combo.currentText().strip(),
-                    'wirkweise': details.get('wirkweise', ''),
-                    'nebenwirkungen': details.get('nebenwirkungen', ''),
+                    'name':             name,
+                    'dosis':            dosis_edit.text().strip(),
+                    'applikation':      app_combo.currentText().strip(),
+                    'wirkweise':        details.get('wirkweise', ''),
+                    'nebenwirkungen':   details.get('nebenwirkungen', ''),
                     'kontraindikation': details.get('kontraindikation', ''),
+                    'indikation':       details.get('indikation', ''),
+                    'dosierung':        details.get('dosierung', ''),
+                    'arzneimittelgruppe': details.get('arzneimittelgruppe', ''),
+                    'inkubationszeit':  details.get('inkubationszeit', ''),
                 })
         return result
 
@@ -381,8 +424,24 @@ class MedikamentListWidget(QWidget):
         name_lower = medikament_name.strip().lower()
         for name_edit, _d, _a, details, _w in self._rows:
             if name_edit.text().strip().lower() == name_lower:
-                details.update(details_dict)
+                # _btn darf nicht überschrieben werden
+                btn = details.get('_btn')
+                details.update({k: v for k, v in details_dict.items() if k != '_btn'})
+                if btn is not None:
+                    details['_btn'] = btn
+                _filled = any(details.get(k) for k in ('wirkweise', 'nebenwirkungen', 'kontraindikation'))
+                if btn and _filled:
+                    btn.setText("✅ Details")
+                    btn.setStyleSheet(
+                        "QPushButton{border:2px solid #388E3C;color:#388E3C;border-radius:3px;}")
                 break
+
+    def _reset_rows(self):
+        """Entfernt alle Zeilen aus dem Widget, ohne eine leere Zeile nachzufügen (interner Helfer)."""
+        for *_, w in self._rows:
+            self._vlayout.removeWidget(w)
+            w.deleteLater()
+        self._rows.clear()
 
     def get_text(self) -> str:
         """Formatierte Medikamentenliste als einzelne Zeilen."""
@@ -399,7 +458,7 @@ class MedikamentListWidget(QWidget):
     def set_medikamente(self, value):
         """Setzt Medikamente aus String, Liste von Strings oder Liste von Dicts."""
         import re as _re
-        self.clear()
+        self._reset_rows()  # kein zusätzlicher leerer Datensatz am Anfang
         if isinstance(value, str):
             items = [t.strip().lstrip('-').strip() for t in _re.split(r'[,\n]+', value) if t.strip()]
             for item in items:
@@ -420,10 +479,14 @@ class MedikamentListWidget(QWidget):
                 if isinstance(m, dict):
                     self.add_row(
                         m.get('name', ''), m.get('dosis', ''), m.get('applikation', 'i.v.'),
-                        m.get('wirkweise', ''), m.get('nebenwirkungen', ''), m.get('kontraindikation', '')
+                        m.get('wirkweise', ''), m.get('nebenwirkungen', ''), m.get('kontraindikation', ''),
+                        m.get('indikation', ''), m.get('dosierung', ''), m.get('arzneimittelgruppe', ''), m.get('inkubationszeit', '')
                     )
                 elif isinstance(m, str) and m.strip():
                     self.add_row(name=m.strip())
+        # Falls kein einziger Eintrag (leere Liste / leerer String): eine leere Zeile anbieten
+        if not self._rows:
+            self.add_row()
 
     def clear(self):
         for *_, w in self._rows:
@@ -2124,9 +2187,7 @@ class MainWindow(QMainWindow):
             self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
             self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
             med_raw = _json.loads(bericht.get('medikamente_json', '') or '[]')
-            self.edit_medikamente_widget.clear()
-            if med_raw:
-                self.edit_medikamente_widget.set_medikamente(med_raw)
+            self.edit_medikamente_widget.set_medikamente(med_raw)
 
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
@@ -2180,9 +2241,7 @@ class MainWindow(QMainWindow):
             self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
             self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
             med_raw = _json.loads(bericht.get('medikamente_json', '') or '[]')
-            self.edit_medikamente_widget.clear()
-            if med_raw:
-                self.edit_medikamente_widget.set_medikamente(med_raw)
+            self.edit_medikamente_widget.set_medikamente(med_raw)
 
             self.tabs.setCurrentIndex(2)  # Wechsle zu Tab "Ansehen/Bearbeiten"
     

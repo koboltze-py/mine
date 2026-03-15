@@ -208,27 +208,34 @@ class ReportGenerator:
 
         # Medikamenten-Tabelle
         if medikamente:
-            has_details = any(
-                m.get('wirkweise') or m.get('nebenwirkungen') or m.get('kontraindikation')
-                for m in medikamente
-            )
+            _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
+                            'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
+            has_details = any(any(m.get(k) for k in _DETAIL_KEYS) for m in medikamente)
             if has_details:
                 col_widths = [3.5*cm, 2.0*cm, 2.0*cm, 9.5*cm]
                 hdr = [
                     Paragraph('<b>Medikament</b>', body_style),
                     Paragraph('<b>Dosis</b>', body_style),
                     Paragraph('<b>Applikation</b>', body_style),
-                    Paragraph('<b>Wirkweise / Nebenwirkungen / Kontraindikation</b>', body_style),
+                    Paragraph('<b>Pharmakologie / Klinische Details</b>', body_style),
                 ]
                 med_rows = [hdr]
                 for m in medikamente:
                     detail_parts = []
+                    if m.get('arzneimittelgruppe'):
+                        detail_parts.append(f"<b>Gruppe:</b> {m['arzneimittelgruppe']}")
+                    if m.get('indikation'):
+                        detail_parts.append(f"<b>Indikation:</b> {m['indikation']}")
                     if m.get('wirkweise'):
                         detail_parts.append(f"<b>Wirkweise:</b> {m['wirkweise']}")
                     if m.get('nebenwirkungen'):
                         detail_parts.append(f"<b>NW:</b> {m['nebenwirkungen']}")
                     if m.get('kontraindikation'):
                         detail_parts.append(f"<b>KI:</b> {m['kontraindikation']}")
+                    if m.get('dosierung'):
+                        detail_parts.append(f"<b>Dosierung:</b> {m['dosierung']}")
+                    if m.get('inkubationszeit'):
+                        detail_parts.append(f"<b>Wirkungseintritt:</b> {m['inkubationszeit']}")
                     det = Paragraph('<br/>'.join(detail_parts) if detail_parts else '–', body_style)
                     med_rows.append([
                         Paragraph(m.get('name', ''), body_style),
@@ -418,10 +425,9 @@ class ReportGenerator:
 
         # Medikamenten-Tabelle (Word)
         if medikamente:
-            has_details = any(
-                m.get('wirkweise') or m.get('nebenwirkungen') or m.get('kontraindikation')
-                for m in medikamente
-            )
+            _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
+                            'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
+            has_details = any(any(m.get(k) for k in _DETAIL_KEYS) for m in medikamente)
             h = doc.add_heading('Verabreichte Medikamente', 2)
             h.paragraph_format.keep_with_next = True
             n_cols = 4 if has_details else 3
@@ -432,7 +438,7 @@ class ReportGenerator:
             hdr_cells[1].text = 'Dosis'
             hdr_cells[2].text = 'Applikation'
             if has_details:
-                hdr_cells[3].text = 'Wirkweise / NW / KI'
+                hdr_cells[3].text = 'Pharmakologie / Klinische Details'
             for i, m in enumerate(medikamente, start=1):
                 row_cells = med_tbl.rows[i].cells
                 row_cells[0].text = m.get('name', '')
@@ -440,9 +446,13 @@ class ReportGenerator:
                 row_cells[2].text = m.get('applikation', '')
                 if has_details:
                     parts = []
-                    if m.get('wirkweise'):    parts.append(f"Wirkweise: {m['wirkweise']}")
-                    if m.get('nebenwirkungen'): parts.append(f"NW: {m['nebenwirkungen']}")
-                    if m.get('kontraindikation'): parts.append(f"KI: {m['kontraindikation']}")
+                    if m.get('arzneimittelgruppe'): parts.append(f"Gruppe: {m['arzneimittelgruppe']}")
+                    if m.get('indikation'):         parts.append(f"Indikation: {m['indikation']}")
+                    if m.get('wirkweise'):          parts.append(f"Wirkweise: {m['wirkweise']}")
+                    if m.get('nebenwirkungen'):     parts.append(f"NW: {m['nebenwirkungen']}")
+                    if m.get('kontraindikation'):   parts.append(f"KI: {m['kontraindikation']}")
+                    if m.get('dosierung'):          parts.append(f"Dosierung: {m['dosierung']}")
+                    if m.get('inkubationszeit'):    parts.append(f"Wirkungseintritt: {m['inkubationszeit']}")
                     row_cells[3].text = '  |  '.join(parts)
                 for cell in med_tbl.rows[i].cells:
                     for para in cell.paragraphs:
@@ -578,8 +588,9 @@ class ReportGenerator:
                 Table as _OdfTable, TableRow as _OdfTableRow,
                 TableCell as _OdfTableCell, TableColumn as _OdfTableColumn
             )
-            _detail_keys = ('wirkweise', 'nebenwirkungen', 'kontraindikation')
-            has_details = any(any(m.get(k) for k in _detail_keys) for m in medikamente)
+            _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
+                            'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
+            has_details = any(any(m.get(k) for k in _DETAIL_KEYS) for m in medikamente)
             doc.text.addElement(H(outlinelevel=2, text="Verabreichte Medikamente"))
             n_cols = 4 if has_details else 3
             odf_med_tbl = _OdfTable(name="MedikamenteTabelle")
@@ -589,7 +600,7 @@ class ReportGenerator:
             hdr_row = _OdfTableRow()
             headers = ['Medikament', 'Dosis', 'Applikation']
             if has_details:
-                headers.append('Wirkweise / NW / Kontraindikation')
+                headers.append('Pharmakologie / Klinische Details')
             for hdr_text in headers:
                 cell = _OdfTableCell()
                 cell.addElement(P(stylename=text_style, text=hdr_text))
@@ -604,12 +615,13 @@ class ReportGenerator:
                     data_row.addElement(cell)
                 if has_details:
                     parts = []
-                    if m.get('wirkweise'):
-                        parts.append(f"Wirkweise: {m['wirkweise']}")
-                    if m.get('nebenwirkungen'):
-                        parts.append(f"NW: {m['nebenwirkungen']}")
-                    if m.get('kontraindikation'):
-                        parts.append(f"KI: {m['kontraindikation']}")
+                    if m.get('arzneimittelgruppe'): parts.append(f"Gruppe: {m['arzneimittelgruppe']}")
+                    if m.get('indikation'):         parts.append(f"Indikation: {m['indikation']}")
+                    if m.get('wirkweise'):          parts.append(f"Wirkweise: {m['wirkweise']}")
+                    if m.get('nebenwirkungen'):     parts.append(f"NW: {m['nebenwirkungen']}")
+                    if m.get('kontraindikation'):   parts.append(f"KI: {m['kontraindikation']}")
+                    if m.get('dosierung'):          parts.append(f"Dosierung: {m['dosierung']}")
+                    if m.get('inkubationszeit'):    parts.append(f"Wirkungseintritt: {m['inkubationszeit']}")
                     cell = _OdfTableCell()
                     cell.addElement(P(stylename=text_style,
                                      text=' | '.join(parts) if parts else ''))
@@ -696,9 +708,13 @@ class ReportGenerator:
             med_lines = ["Verabreichte Medikamente:"]
             for m in medikamente:
                 med_lines.append(f"  {m.get('name', '')}  {m.get('dosis', '')}  {m.get('applikation', '')}".strip())
-                if m.get('wirkweise'):      med_lines.append(f"    Wirkweise: {m['wirkweise']}")
-                if m.get('nebenwirkungen'): med_lines.append(f"    Nebenwirkungen: {m['nebenwirkungen']}")
-                if m.get('kontraindikation'): med_lines.append(f"    Kontraindikation: {m['kontraindikation']}")
+                if m.get('arzneimittelgruppe'):  med_lines.append(f"    Arzneimittelgruppe: {m['arzneimittelgruppe']}")
+                if m.get('indikation'):          med_lines.append(f"    Indikation: {m['indikation']}")
+                if m.get('wirkweise'):           med_lines.append(f"    Wirkweise: {m['wirkweise']}")
+                if m.get('nebenwirkungen'):      med_lines.append(f"    Nebenwirkungen: {m['nebenwirkungen']}")
+                if m.get('kontraindikation'):    med_lines.append(f"    Kontraindikation: {m['kontraindikation']}")
+                if m.get('dosierung'):           med_lines.append(f"    Dosierung: {m['dosierung']}")
+                if m.get('inkubationszeit'):     med_lines.append(f"    Wirkungseintritt: {m['inkubationszeit']}")
             med_lines.append("")
         lines = (
             ["EINSATZBERICHT", "", f"Titel: {titel}", f"Alarmierung: {thema}", ""]

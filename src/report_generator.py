@@ -206,7 +206,32 @@ class ReportGenerator:
                 ]))
                 story.append(Spacer(1, 0.4*cm))
 
-        # Medikamenten-Tabelle
+        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
+                       Paragraph(str(v), body_style)]
+                      for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                _stbl = Table(_srows, colWidths=[1.8*cm, 15.2*cm])
+                _stbl.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (-1, -1), rl_font),
+                    ('FONTSIZE', (0, 0), (-1, -1), fs),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
+                    ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.90, 0.93, 0.97)),
+                    ('TOPPADDING', (0, 0), (-1, -1), 3),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ]))
+                story.append(KeepTogether([
+                    Paragraph(f'<b>{_sname}-Schema</b>', heading_style),
+                    _stbl,
+                ]))
+                story.append(Spacer(1, 0.3*cm))
+
+        # Medikamenten-Tabelle (nach Schemata)
         if medikamente:
             _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
                             'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
@@ -274,31 +299,6 @@ class ReportGenerator:
                 med_tbl,
             ]))
             story.append(Spacer(1, 0.4*cm))
-
-        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
-        for _sname, _svals in (abcde_data or {}).items():
-            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
-                continue
-            _srows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
-                       Paragraph(str(v), body_style)]
-                      for k, v in _svals.items() if str(v).strip()]
-            if _srows:
-                _stbl = Table(_srows, colWidths=[1.8*cm, 15.2*cm])
-                _stbl.setStyle(TableStyle([
-                    ('FONTNAME', (0, 0), (-1, -1), rl_font),
-                    ('FONTSIZE', (0, 0), (-1, -1), fs),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.Color(0.75, 0.75, 0.75)),
-                    ('BACKGROUND', (0, 0), (0, -1), colors.Color(0.90, 0.93, 0.97)),
-                    ('TOPPADDING', (0, 0), (-1, -1), 3),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
-                ]))
-                story.append(KeepTogether([
-                    Paragraph(f'<b>{_sname}-Schema</b>', heading_style),
-                    _stbl,
-                ]))
-                story.append(Spacer(1, 0.3*cm))
 
         # Text nach dem ABCDE-Block
         if _after is not None:
@@ -423,12 +423,30 @@ class ReportGenerator:
                                 run.font.size = _fs
                 doc.add_paragraph()
 
-        # Medikamenten-Tabelle (Word)
+        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                h = doc.add_heading(f'{_sname}-Schema', 2)
+                h.paragraph_format.keep_with_next = True
+                tbl = doc.add_table(rows=len(_srows), cols=2)
+                tbl.style = 'Table Grid'
+                for i, (key, val) in enumerate(_srows):
+                    tbl.cell(i, 0).text = key
+                    tbl.cell(i, 1).text = val
+                    for cell in [tbl.cell(i, 0), tbl.cell(i, 1)]:
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = _fs
+                doc.add_paragraph()
+
+        # Medikamenten-Tabelle (Word, nach Schemata)
         if medikamente:
             _DETAIL_KEYS = ('wirkweise', 'nebenwirkungen', 'kontraindikation',
                             'indikation', 'dosierung', 'arzneimittelgruppe', 'inkubationszeit')
             has_details = any(any(m.get(k) for k in _DETAIL_KEYS) for m in medikamente)
-            h = doc.add_heading('Verabreichte Medikamente', 2)
             h.paragraph_format.keep_with_next = True
             n_cols = 4 if has_details else 3
             med_tbl = doc.add_table(rows=1 + len(medikamente), cols=n_cols)
@@ -459,25 +477,6 @@ class ReportGenerator:
                         for run in para.runs:
                             run.font.size = _fs
             doc.add_paragraph()
-
-        # Weitere Schemata (OPQRST, SAMPLER etc.) als Tabelle
-        for _sname, _svals in (abcde_data or {}).items():
-            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
-                continue
-            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
-            if _srows:
-                h = doc.add_heading(f'{_sname}-Schema', 2)
-                h.paragraph_format.keep_with_next = True
-                tbl = doc.add_table(rows=len(_srows), cols=2)
-                tbl.style = 'Table Grid'
-                for i, (key, val) in enumerate(_srows):
-                    tbl.cell(i, 0).text = key
-                    tbl.cell(i, 1).text = val
-                    for cell in [tbl.cell(i, 0), tbl.cell(i, 1)]:
-                        for para in cell.paragraphs:
-                            for run in para.runs:
-                                run.font.size = _fs
-                doc.add_paragraph()
 
         # Text nach dem ABCDE-Block
         if _after is not None:
@@ -582,7 +581,18 @@ class ReportGenerator:
                     doc.text.addElement(P(stylename=text_style, text=line))
                 doc.text.addElement(P(text=""))
 
-        # Medikamente (ODF) — echte Tabelle
+        # Weitere Schemata (OPQRST, SAMPLER etc.) — VOR Medikamenten
+        for _sname, _svals in (abcde_data or {}).items():
+            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
+                continue
+            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
+            if _srows:
+                doc.text.addElement(H(outlinelevel=2, text=f"{_sname}-Schema"))
+                for key, val in _srows:
+                    doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
+                doc.text.addElement(P(text=""))
+
+        # Medikamente (ODF) — echte Tabelle (nach Schemata)
         if medikamente:
             from odf.table import (
                 Table as _OdfTable, TableRow as _OdfTableRow,
@@ -629,17 +639,6 @@ class ReportGenerator:
                 odf_med_tbl.addElement(data_row)
             doc.text.addElement(odf_med_tbl)
             doc.text.addElement(P(text=""))
-
-        # Weitere Schemata (OPQRST, SAMPLER etc.)
-        for _sname, _svals in (abcde_data or {}).items():
-            if _sname in ('xABCDE', 'ABCDE') or not isinstance(_svals, dict):
-                continue
-            _srows = [(k.upper() + '=', str(v)) for k, v in _svals.items() if str(v).strip()]
-            if _srows:
-                doc.text.addElement(H(outlinelevel=2, text=f"{_sname}-Schema"))
-                for key, val in _srows:
-                    doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
-                doc.text.addElement(P(text=""))
 
         # Text nach dem ABCDE-Block
         if _after is not None:
@@ -722,8 +721,8 @@ class ReportGenerator:
             + before_lines
             + abcde_lines
             + vw_lines
-            + med_lines
             + other_schema_lines
+            + med_lines
             + after_lines
             + ([""]+reflexion_lines if reflexion_lines else [])
         )

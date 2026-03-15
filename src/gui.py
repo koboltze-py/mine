@@ -884,68 +884,103 @@ class MainWindow(QMainWindow):
         self.table.doubleClicked.connect(self.open_bericht)
         layout.addWidget(self.table)
         
-        # Buttons
-        button_layout = QHBoxLayout()
-        
-        refresh_btn = QPushButton("Aktualisieren")
+        # Buttons – Zeile 1: Basisfunktionen
+        btn_row1 = QHBoxLayout()
+        btn_row1.setSpacing(6)
+
+        refresh_btn = QPushButton("🔄 Aktualisieren")
+        refresh_btn.setToolTip("Berichtliste neu laden")
         refresh_btn.clicked.connect(self.load_berichte)
-        button_layout.addWidget(refresh_btn)
-        
-        open_btn = QPushButton("Öffnen")
+        btn_row1.addWidget(refresh_btn)
+
+        open_btn = QPushButton("📂 Öffnen / Bearbeiten")
+        open_btn.setToolTip('Ausgewählten Bericht im Tab "Ansehen / Bearbeiten" öffnen')
         open_btn.clicked.connect(self.open_bericht)
-        button_layout.addWidget(open_btn)
-        
-        delete_btn = QPushButton("Löschen")
+        btn_row1.addWidget(open_btn)
+
+        delete_btn = QPushButton("🗑 Löschen")
+        delete_btn.setToolTip("Ausgewählten Bericht dauerhaft löschen")
         delete_btn.clicked.connect(self.delete_bericht)
-        button_layout.addWidget(delete_btn)
-        
-        export_pdf_btn = QPushButton("Als PDF exportieren")
-        export_pdf_btn.clicked.connect(lambda: self.export_bericht('pdf'))
-        button_layout.addWidget(export_pdf_btn)
+        btn_row1.addWidget(delete_btn)
 
-        export_word_btn = QPushButton("Als Word exportieren")
-        export_word_btn.clicked.connect(lambda: self.export_bericht('word'))
-        button_layout.addWidget(export_word_btn)
-
-        export_odf_btn = QPushButton("Als ODF exportieren")
-        export_odf_btn.clicked.connect(lambda: self.export_bericht('odf'))
-        button_layout.addWidget(export_odf_btn)
-
-        export_pages_btn = QPushButton("Als Pages exportieren")
-        export_pages_btn.clicked.connect(lambda: self.export_bericht('pages'))
-        button_layout.addWidget(export_pages_btn)
-
-        import_btn = QPushButton("Bericht importieren")
+        import_btn = QPushButton("📥 Bericht importieren")
+        import_btn.setToolTip("Bericht aus einer externen Datei importieren")
         import_btn.clicked.connect(self.import_bericht)
-        button_layout.addWidget(import_btn)
+        btn_row1.addWidget(import_btn)
 
-        layout.addLayout(button_layout)
+        btn_row1.addStretch()
+        layout.addLayout(btn_row1)
 
-        self.tabs.addTab(overview_widget, "Übersicht")
+        # Buttons – Zeile 2: Export
+        btn_row2 = QHBoxLayout()
+        btn_row2.setSpacing(6)
+        _exp_lbl = QLabel("Exportieren als:")
+        _exp_lbl.setStyleSheet("font-weight:bold;")
+        btn_row2.addWidget(_exp_lbl)
+
+        export_pdf_btn = QPushButton("📄 PDF")
+        export_pdf_btn.setToolTip("Ausgewählten Bericht als PDF exportieren")
+        export_pdf_btn.clicked.connect(lambda: self.export_bericht('pdf'))
+        btn_row2.addWidget(export_pdf_btn)
+
+        export_word_btn = QPushButton("📝 Word (.docx)")
+        export_word_btn.setToolTip("Ausgewählten Bericht als Word-Dokument exportieren")
+        export_word_btn.clicked.connect(lambda: self.export_bericht('word'))
+        btn_row2.addWidget(export_word_btn)
+
+        export_odf_btn = QPushButton("📄 ODF (.odt)")
+        export_odf_btn.setToolTip("Ausgewählten Bericht als OpenDocument-Text exportieren")
+        export_odf_btn.clicked.connect(lambda: self.export_bericht('odf'))
+        btn_row2.addWidget(export_odf_btn)
+
+        export_pages_btn = QPushButton("🍎 Pages")
+        export_pages_btn.setToolTip("Ausgewählten Bericht als Apple Pages exportieren")
+        export_pages_btn.clicked.connect(lambda: self.export_bericht('pages'))
+        btn_row2.addWidget(export_pages_btn)
+
+        btn_row2.addStretch()
+        layout.addLayout(btn_row2)
+
+        self.tabs.addTab(overview_widget, "📋  Übersicht")
     
     def setup_new_report_tab(self):
-        """Erstellt den Tab für neue Berichte"""
+        """Erstellt den Tab für neue Berichte – neu gestaltet mit Splitter-Layout"""
         new_report_widget = QWidget()
-        outer_layout = QVBoxLayout()
-        new_report_widget.setLayout(outer_layout)
+        outer_layout = QVBoxLayout(new_report_widget)
+        outer_layout.setSpacing(6)
+        outer_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Scrollbarer Formularbereich
+        # ── Kopf: Titel + Workflow-Hinweis ──────────────────────────────
+        header_lbl = QLabel("📋  Neuen Einsatzbericht erstellen")
+        _hf = QFont()
+        _hf.setPointSize(13)
+        _hf.setBold(True)
+        header_lbl.setFont(_hf)
+        outer_layout.addWidget(header_lbl)
+
+        workflow_lbl = QLabel(
+            "① Formulardaten eingeben (oder via 🎲 automatisch befüllen)  ›  "
+            "② 🤖 Bericht generieren  ›  ③ Vorschau rechts prüfen  ›  ④ 💾 Speichern"
+        )
+        workflow_lbl.setWordWrap(True)
+        workflow_lbl.setStyleSheet("color:#666; font-style:italic; padding:0 0 4px 0;")
+        outer_layout.addWidget(workflow_lbl)
+
+        # ── Haupt-Splitter: Links = Formular, Rechts = Vorschau ──────────
+        main_splitter = QSplitter(Qt.Horizontal)
+        outer_layout.addWidget(main_splitter, 1)
+
+        # ─── LINKE SEITE: Scrollbares Eingabeformular ───────────────────
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMaximumHeight(420)
         form_widget = QWidget()
-        layout = QVBoxLayout()
-        form_widget.setLayout(layout)
+        layout = QVBoxLayout(form_widget)
+        layout.setSpacing(8)
+        layout.setContentsMargins(4, 4, 8, 4)
         scroll.setWidget(form_widget)
-        outer_layout.addWidget(scroll)
 
-        # Info
-        info_label = QLabel("Erstellen Sie einen neuen Einsatzbericht mit Hilfe von Claude AI")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
-        # ── Einsatz-Grunddaten ──────────────────────────────────────────
-        grunddaten_group = QGroupBox("Einsatz-Grunddaten")
+        # ① Grunddaten
+        grunddaten_group = QGroupBox("① Grunddaten")
         grunddaten_form = QFormLayout()
         grunddaten_group.setLayout(grunddaten_form)
 
@@ -971,25 +1006,30 @@ class MainWindow(QMainWindow):
         self.new_seitenzahl = QSpinBox()
         self.new_seitenzahl.setRange(1, 20)
         self.new_seitenzahl.setValue(2)
+        _seiten_row = QWidget()
+        _seiten_l = QHBoxLayout(_seiten_row)
+        _seiten_l.setContentsMargins(0, 0, 0, 0)
+        _seiten_l.addWidget(self.new_seitenzahl)
+        _seiten_l.addWidget(QLabel("  Seiten  (Richtwert für die KI)"))
+        _seiten_l.addStretch()
 
-        grunddaten_form.addRow("Titel (intern):", self.new_titel)
+        grunddaten_form.addRow("Interner Titel:", self.new_titel)
         grunddaten_form.addRow("Alarmierungsstichwort:", self.new_stichwort)
         grunddaten_form.addRow("Datum / Alarmierungszeit:", datum_uhrzeit_widget)
-        grunddaten_form.addRow("Seitenzahl (ca.):", self.new_seitenzahl)
+        grunddaten_form.addRow("Berichtslänge (ca.):", _seiten_row)
         layout.addWidget(grunddaten_group)
 
-        # ── Beteiligte Rettungsmittel ───────────────────────────────────
-        rm_group = QGroupBox("Beteiligte Rettungsmittel")
+        # ② Rettungsmittel
+        rm_group = QGroupBox("② Beteiligte Rettungsmittel")
         rm_layout = QVBoxLayout()
         rm_group.setLayout(rm_layout)
         self.new_rettungsmittel_widget = RettungsmittelListWidget()
         rm_layout.addWidget(self.new_rettungsmittel_widget)
         layout.addWidget(rm_group)
 
-        # ── Medikamente ─────────────────────────────────────────────────
-        med_group = QGroupBox("Verabreichte Medikamente")
+        # ③ Medikamente
+        med_group = QGroupBox("③ Verabreichte Medikamente")
         med_layout = QVBoxLayout()
-        # Spaltenbeschriftung
         med_header = QWidget()
         med_header_l = QHBoxLayout()
         med_header_l.setContentsMargins(0, 0, 0, 0)
@@ -1011,10 +1051,16 @@ class MainWindow(QMainWindow):
         med_group.setLayout(med_layout)
         layout.addWidget(med_group)
 
-        # ── Schemata ────────────────────────────────────────────────────
-        schemata_outer = QGroupBox("Schemata – Checkbox aktivieren und Befunde eintragen")
+        # ④ Klinische Schemata
+        schemata_outer = QGroupBox("④ Klinische Schemata  (Checkbox = aktiv, Felder ausfüllen)")
         schemata_vlayout = QVBoxLayout()
         schemata_outer.setLayout(schemata_vlayout)
+        _schema_hint = QLabel(
+            "💡 Schemata werden als strukturierte Tabelle in den Bericht übernommen. "
+            "Checkbox aktivieren oder einfach tippen – das Feld aktiviert sich automatisch.")
+        _schema_hint.setWordWrap(True)
+        _schema_hint.setStyleSheet("color:#888; font-style:italic; padding:0 0 4px 2px;")
+        schemata_vlayout.addWidget(_schema_hint)
 
         # Komplexe Schemata mit Sub-Feldern
         self.schema_widgets = {}  # name -> SchemaWidget
@@ -1080,62 +1126,117 @@ class MainWindow(QMainWindow):
         schemata_vlayout.addWidget(simple_w)
         layout.addWidget(schemata_outer)
 
-        # ── Vitalwerte / Messwerte ──────────────────────────────────────
+        # ⑤ Vitalwerte / Messwerte
+        _vw_outer = QGroupBox("⑤ Vitalwerte / Messwerte")
+        _vw_outer_l = QVBoxLayout(_vw_outer)
+        _vw_hint = QLabel(
+            "💡 Messwerte werden als separate Tabelle ausgegeben – "
+            "NICHT in die Schema-Felder (xABCDE) eintragen.")
+        _vw_hint.setWordWrap(True)
+        _vw_hint.setStyleSheet("color:#888; font-style:italic; padding:0 0 4px 2px;")
+        _vw_outer_l.addWidget(_vw_hint)
         self.new_vitalwerte_widget = VitalwerteWidget()
-        layout.addWidget(self.new_vitalwerte_widget)
+        _vw_outer_l.addWidget(self.new_vitalwerte_widget)
+        layout.addWidget(_vw_outer)
 
-        # ── Zusätzlicher Kontext ────────────────────────────────────────
-        kontext_group = QGroupBox("Zusätzlicher Kontext / eigene Angaben")
-        kontext_form = QFormLayout()
-        kontext_group.setLayout(kontext_form)
+        # ⑥ Zusatzinfo & Einsatzreflexion
+        extra_group = QGroupBox("⑥ Zusatzinfo & Einsatzreflexion")
+        extra_form = QFormLayout(extra_group)
         self.new_zusatz = QTextEdit()
-        self.new_zusatz.setMaximumHeight(80)
+        self.new_zusatz.setMaximumHeight(70)
         self.new_zusatz.setPlaceholderText(
-            "Weitere Informationen, z.B. Patientendaten, Vorerkrankungen, besondere Umstände..."
-        )
-        kontext_form.addRow("Kontext:", self.new_zusatz)
-        layout.addWidget(kontext_group)
-
-        # ── Einsatzreflexion ────────────────────────────────────────────
-        reflexion_group = QGroupBox("Einsatzreflexion")
-        reflexion_form = QFormLayout()
-        reflexion_group.setLayout(reflexion_form)
+            "Weitere Hintergrundinformationen, Patientendetails, besondere Umstände …")
+        extra_form.addRow("Kontext / Zusatz:", self.new_zusatz)
         self.new_reflexion = QTextEdit()
-        self.new_reflexion.setMaximumHeight(100)
+        self.new_reflexion.setMaximumHeight(80)
         self.new_reflexion.setPlaceholderText(
             "Stichwörter zur Reflexion (z.B. \"gute Teamarbeit, zeitkritisch, IV-Zugang schwierig\") "
-            "– Claude formuliert daraus einen professionellen Text."
-        )
-        reflexion_form.addRow("Reflexion:", self.new_reflexion)
+            "– Claude formuliert daraus einen professionellen Text.")
+        extra_form.addRow("Reflexion (Stichworte):", self.new_reflexion)
         _new_refl_ki_btn = QPushButton("🤖 Reflexion ausformulieren (KI)")
         _new_refl_ki_btn.setToolTip("Stichwörter → Claude schreibt vollständige Reflexion")
         _new_refl_ki_btn.clicked.connect(self._ki_reflexion_new)
-        reflexion_form.addRow("", _new_refl_ki_btn)
-        layout.addWidget(reflexion_group)
+        extra_form.addRow("", _new_refl_ki_btn)
+        layout.addWidget(extra_group)
+        layout.addStretch()
 
-        # ── Vorschau + Buttons ──────────────────────────────────────────
-        outer_layout.addWidget(QLabel("Vorschau (generierter Bericht):"))
+        main_splitter.addWidget(scroll)
+
+        # ─── RECHTE SEITE: Vorschau ──────────────────────────────────────
+        preview_panel = QWidget()
+        preview_l = QVBoxLayout(preview_panel)
+        preview_l.setContentsMargins(4, 0, 4, 0)
+        _prev_hdr = QLabel("📄  Vorschau – Generierter Bericht")
+        _pf = QFont()
+        _pf.setPointSize(11)
+        _pf.setBold(True)
+        _prev_hdr.setFont(_pf)
+        preview_l.addWidget(_prev_hdr)
+        _prev_hint = QLabel(
+            "Nach Klick auf  🤖 Bericht generieren  erscheint hier der fertige Text zur Kontrolle.\n"
+            "Erst nach Prüfung auf  💾 Bericht speichern  klicken.")
+        _prev_hint.setWordWrap(True)
+        _prev_hint.setStyleSheet("color:#888; font-style:italic; padding:2px 0 6px 0;")
+        preview_l.addWidget(_prev_hint)
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
-        outer_layout.addWidget(self.preview_text)
+        preview_l.addWidget(self.preview_text, 1)
+        main_splitter.addWidget(preview_panel)
+        main_splitter.setSizes([560, 440])
+
+        # ── Aktionsleiste (permanent sichtbar unten) ────────────────────
+        _sep = QLabel()
+        _sep.setFixedHeight(1)
+        _sep.setStyleSheet("background:#ccc;")
+        outer_layout.addWidget(_sep)
 
         button_layout = QHBoxLayout()
-        generate_btn = QPushButton("🤖 Bericht generieren")
-        generate_btn.clicked.connect(self.generate_report)
-        button_layout.addWidget(generate_btn)
-        erfinden_btn_main = QPushButton("🎲 Bericht erfinden (KI)")
-        erfinden_btn_main.setToolTip("Claude erfindet ein medizinisch korrektes Szenario und füllt alle Felder aus.")
+        button_layout.setSpacing(8)
+
+        erfinden_btn_main = QPushButton("🎲  Szenario erfinden (KI)")
+        erfinden_btn_main.setToolTip(
+            "Claude erfindet ein vollständiges, medizinisch korrektes Szenario\n"
+            "und befüllt alle Formularfelder automatisch.")
+        erfinden_btn_main.setMinimumHeight(36)
         erfinden_btn_main.clicked.connect(self.erfinden_bericht)
         button_layout.addWidget(erfinden_btn_main)
-        save_btn = QPushButton("Speichern")
+
+        button_layout.addStretch()
+
+        generate_btn = QPushButton("🤖  Bericht generieren")
+        generate_btn.setToolTip(
+            "Alle Formulardaten werden an Claude AI übergeben.\n"
+            "Der fertige Bericht erscheint rechts in der Vorschau.")
+        generate_btn.setMinimumHeight(36)
+        generate_btn.setStyleSheet(
+            "QPushButton{background:#1565c0;color:#fff;font-weight:bold;"
+            "border-radius:5px;padding:6px 18px;border:none;}"
+            "QPushButton:hover{background:#1976D2;}")
+        generate_btn.clicked.connect(self.generate_report)
+        button_layout.addWidget(generate_btn)
+
+        save_btn = QPushButton("💾  Bericht speichern")
+        save_btn.setToolTip(
+            "Generierten Bericht in der Datenbank speichern\n"
+            "und PDF / Word-Dokument automatisch erstellen.\n"
+            "Voraussetzung: Vorschau enthält einen Bericht.")
+        save_btn.setMinimumHeight(36)
+        save_btn.setStyleSheet(
+            "QPushButton{background:#2e7d32;color:#fff;font-weight:bold;"
+            "border-radius:5px;padding:6px 18px;border:none;}"
+            "QPushButton:hover{background:#388e3c;}")
         save_btn.clicked.connect(self.save_new_report)
         button_layout.addWidget(save_btn)
-        clear_btn = QPushButton("Zurücksetzen")
+
+        clear_btn = QPushButton("🗑  Formular leeren")
+        clear_btn.setToolTip("Alle Felder zurücksetzen.\nNicht gespeicherte Daten gehen verloren!")
+        clear_btn.setMinimumHeight(36)
         clear_btn.clicked.connect(self.clear_new_report)
         button_layout.addWidget(clear_btn)
+
         outer_layout.addLayout(button_layout)
 
-        self.tabs.addTab(new_report_widget, "Neuer Bericht")
+        self.tabs.addTab(new_report_widget, "✚  Neuer Bericht")
     
     def _popup_schema_edit(self):
         """Öffnet einen Dialog zum Bearbeiten der gespeicherten Schemata (ABCDE, OPQRST, SAMPLER + einfache)."""
@@ -1349,27 +1450,30 @@ class MainWindow(QMainWindow):
             textedit.setPlainText(editor.toPlainText())
 
     def setup_view_edit_tab(self):
-        """Erstellt den Tab zum Ansehen/Bearbeiten"""
+        """Erstellt den Tab zum Ansehen/Bearbeiten – neu gestaltet"""
         view_edit_widget = QWidget()
-        outer_layout = QVBoxLayout()
-        view_edit_widget.setLayout(outer_layout)
+        outer_layout = QVBoxLayout(view_edit_widget)
+        outer_layout.setSpacing(4)
+        outer_layout.setContentsMargins(6, 6, 6, 6)
 
         splitter = QSplitter(Qt.Vertical)
-        outer_layout.addWidget(splitter)
+        outer_layout.addWidget(splitter, 1)
 
         # ── Obere Hälfte: Bericht-Liste ──────────────────────────────────
         list_widget = QWidget()
-        list_layout = QVBoxLayout()
-        list_widget.setLayout(list_layout)
+        list_layout = QVBoxLayout(list_widget)
+        list_layout.setContentsMargins(0, 0, 0, 0)
 
         list_top = QHBoxLayout()
-        list_top.addWidget(QLabel("<b>Gespeicherte Berichte:</b>"))
+        list_top.addWidget(QLabel(
+            "<b>Gespeicherte Berichte</b>  –  Zeile anklicken, um den Bericht unten zu laden:"))
         list_top.addStretch()
         open_pdf_btn = QPushButton("📄 PDF öffnen")
-        open_pdf_btn.setToolTip("PDF des ausgewählten Berichts öffnen")
+        open_pdf_btn.setToolTip("PDF des aktuell geladenen Berichts im Standardprogramm öffnen")
         open_pdf_btn.clicked.connect(self._open_selected_pdf)
         list_top.addWidget(open_pdf_btn)
-        refresh_edit_btn = QPushButton("Aktualisieren")
+        refresh_edit_btn = QPushButton("🔄 Aktualisieren")
+        refresh_edit_btn.setToolTip("Berichtliste neu laden")
         refresh_edit_btn.clicked.connect(self.load_edit_list)
         list_top.addWidget(refresh_edit_btn)
         list_layout.addLayout(list_top)
@@ -1386,23 +1490,48 @@ class MainWindow(QMainWindow):
 
         splitter.addWidget(list_widget)
 
-        # ── Untere Hälfte: Bearbeitungsformular ──────────────────────────
+        # ── Untere Hälfte: Bearbeitungsformular in ScrollArea ─────────────
+        edit_scroll = QScrollArea()
+        edit_scroll.setWidgetResizable(True)
         form_container = QWidget()
-        layout = QVBoxLayout()
-        form_container.setLayout(layout)
+        layout = QVBoxLayout(form_container)
+        layout.setSpacing(6)
+        layout.setContentsMargins(4, 4, 4, 4)
+        edit_scroll.setWidget(form_container)
 
-        # Formular
+        # ─ Geladener-Bericht-Banner ──────────────────────────────────────
+        self._edit_bericht_banner = QLabel(
+            "⬆  Bitte oben einen Bericht anklicken, um ihn hier zu laden und zu bearbeiten.")
+        self._edit_bericht_banner.setWordWrap(True)
+        self._edit_bericht_banner.setStyleSheet(
+            "background:#fff3e0;color:#e65100;border:1px solid #ffb74d;"
+            "border-radius:4px;padding:6px 10px;font-weight:bold;")
+        layout.addWidget(self._edit_bericht_banner)
+
+        # Metadaten-Formular
         form_layout = QFormLayout()
-        
+        form_layout.setSpacing(5)
+
         self.edit_id = QLabel("-")
         self.edit_titel = QLineEdit()
+        self.edit_titel.setPlaceholderText("Interner Titel des Berichts")
         self.edit_thema = QLineEdit()
+        self.edit_thema.setPlaceholderText("Alarmierungsstichwort")
         self.edit_seitenzahl = QSpinBox()
         self.edit_seitenzahl.setRange(1, 20)
         self.edit_seitenzahl.setValue(2)
+        _seiten_row2 = QWidget()
+        _seiten_l2 = QHBoxLayout(_seiten_row2)
+        _seiten_l2.setContentsMargins(0, 0, 0, 0)
+        _seiten_l2.addWidget(self.edit_seitenzahl)
+        _seiten_l2.addWidget(QLabel("  Seiten  (Richtwert für KI-Neugenerierung)"))
+        _seiten_l2.addStretch()
+
         self.edit_kontext = QTextEdit()
-        self.edit_kontext.setMaximumHeight(70)
-        self.edit_kontext.setPlaceholderText("Kontext für KI-Neugenerierung (optional)...")
+        self.edit_kontext.setMaximumHeight(60)
+        self.edit_kontext.setPlaceholderText(
+            "Optionaler Kontext für die KI-Neugenerierung "
+            "(z.B. neue Diagnose, Korrekturen zum Einsatz) …")
         _kontext_container = QWidget()
         _kontext_vbox = QVBoxLayout(_kontext_container)
         _kontext_vbox.setContentsMargins(0, 0, 0, 0)
@@ -1410,38 +1539,47 @@ class MainWindow(QMainWindow):
         _kontext_vbox.addWidget(self.edit_kontext)
         _kontext_popup_btn = QPushButton("✏\ufe0f  Kontext bearbeiten")
         _kontext_popup_btn.setMaximumWidth(220)
-        _kontext_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
+        _kontext_popup_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:4px 10px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
         _kontext_popup_btn.clicked.connect(
-            lambda: self._popup_text_edit(self.edit_kontext, "Kontext bearbeiten"))
+            lambda: self._popup_text_edit(self.edit_kontext, "KI-Kontext bearbeiten"))
         _kontext_vbox.addWidget(_kontext_popup_btn)
 
         form_layout.addRow("Bericht-ID:", self.edit_id)
         form_layout.addRow("Titel:", self.edit_titel)
         form_layout.addRow("Alarmierung:", self.edit_thema)
-        form_layout.addRow("Seitenzahl (KI):", self.edit_seitenzahl)
-        form_layout.addRow("Kontext (KI):", _kontext_container)
-        
+        form_layout.addRow("Berichtslänge (KI):", _seiten_row2)
+        form_layout.addRow("KI-Kontext:", _kontext_container)
         layout.addLayout(form_layout)
-        
+
         # Inhalt
         _inhalt_header = QHBoxLayout()
-        _inhalt_header.addWidget(QLabel("<b>Inhalt:</b>"))
+        _inhalt_header.addWidget(QLabel("<b>Berichtinhalt:</b>"))
         _inhalt_header.addStretch()
         _inhalt_popup_btn = QPushButton("✏\ufe0f  In Vollbild bearbeiten")
-        _inhalt_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
+        _inhalt_popup_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:4px 10px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
         _inhalt_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_inhalt, "Inhalt bearbeiten – Vollbild"))
         _inhalt_header.addWidget(_inhalt_popup_btn)
         layout.addLayout(_inhalt_header)
         self.edit_inhalt = QTextEdit()
+        self.edit_inhalt.setMinimumHeight(110)
         layout.addWidget(self.edit_inhalt)
 
-        # ── Schemata ─────────────────────────────────────────────────
+        # Schemata
         _schema_header = QHBoxLayout()
-        _schema_header.addWidget(QLabel("<b>Schemata (xABCDE / OPQRST / SAMPLER …):</b>"))
+        _schema_header.addWidget(QLabel("<b>Klinische Schemata  (xABCDE / OPQRST / SAMPLER …):</b>"))
         _schema_header.addStretch()
         _schema_popup_btn = QPushButton("✏\ufe0f  Schemata bearbeiten")
-        _schema_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
+        _schema_popup_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:4px 10px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
         _schema_popup_btn.clicked.connect(self._popup_schema_edit)
         _schema_header.addWidget(_schema_popup_btn)
         layout.addLayout(_schema_header)
@@ -1451,76 +1589,122 @@ class MainWindow(QMainWindow):
         self._schema_summary_label.setStyleSheet("color: #555; font-style: italic; padding: 2px 4px;")
         layout.addWidget(self._schema_summary_label)
 
-        self.edit_vitalwerte_widget = VitalwerteWidget()
-        # in ScrollArea einbetten damit alle Felder erreichbar sind
-        _vw_scroll = QScrollArea()
-        _vw_scroll.setWidgetResizable(True)
-        _vw_scroll.setWidget(self.edit_vitalwerte_widget)
-        _vw_scroll.setMinimumHeight(200)
-        _vw_scroll.setMaximumHeight(280)
+        # Vitalwerte
         _vw_header = QHBoxLayout()
         _vw_header.addWidget(QLabel("<b>Vitalwerte / Messwerte:</b>"))
         _vw_header.addStretch()
         _vw_popup_btn = QPushButton("✏\ufe0f  Vitalwerte bearbeiten")
-        _vw_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
+        _vw_popup_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:4px 10px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
         _vw_popup_btn.clicked.connect(self._popup_vitalwerte)
         _vw_header.addWidget(_vw_popup_btn)
         layout.addLayout(_vw_header)
+        self.edit_vitalwerte_widget = VitalwerteWidget()
+        _vw_scroll = QScrollArea()
+        _vw_scroll.setWidgetResizable(True)
+        _vw_scroll.setWidget(self.edit_vitalwerte_widget)
+        _vw_scroll.setMinimumHeight(160)
+        _vw_scroll.setMaximumHeight(240)
         layout.addWidget(_vw_scroll)
 
+        # Reflexion
         _refl_header = QHBoxLayout()
         _refl_header.addWidget(QLabel("<b>Einsatzreflexion:</b>"))
         _refl_header.addStretch()
-        _refl_ki_btn = QPushButton("🤖 KI ausformulieren")
-        _refl_ki_btn.setToolTip("Stichwörter → Claude schreibt vollständige Reflexion")
+        _refl_ki_btn = QPushButton("🤖 Stichwörter → ausformulieren (KI)")
+        _refl_ki_btn.setToolTip(
+            "Stichwörter im Textfeld unten → Claude schreibt daraus eine vollständige Reflexion")
         _refl_ki_btn.clicked.connect(self._ki_reflexion_edit)
         _refl_header.addWidget(_refl_ki_btn)
         _refl_popup_btn = QPushButton("✏\ufe0f  Reflexion bearbeiten")
-        _refl_popup_btn.setStyleSheet("QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;border-radius:4px;padding:4px 10px;background:transparent;}QPushButton:hover{background:#1976D2;color:#fff;}")
+        _refl_popup_btn.setStyleSheet(
+            "QPushButton{border:2px solid #1976D2;color:#1976D2;font-weight:bold;"
+            "border-radius:4px;padding:4px 10px;background:transparent;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
         _refl_popup_btn.clicked.connect(
-            lambda: self._popup_text_edit(self.edit_reflexion, "Einsatzreflexion bearbeiten – Vollbild"))
+            lambda: self._popup_text_edit(
+                self.edit_reflexion, "Einsatzreflexion bearbeiten – Vollbild"))
         _refl_header.addWidget(_refl_popup_btn)
         layout.addLayout(_refl_header)
         self.edit_reflexion = QTextEdit()
-        self.edit_reflexion.setMaximumHeight(100)
+        self.edit_reflexion.setMaximumHeight(90)
         self.edit_reflexion.setPlaceholderText(
-            "Stichwörter zur Reflexion (z.B. \"gute Teamarbeit, IV-Zugang schwierig\") "
-            "– Claude formuliert daraus einen professionellen Text.")
+            "Stichwörter (z.B. \"gute Teamarbeit, IV-Zugang schwierig\") "
+            "oder fertigen Reflexionstext eintragen.")
         layout.addWidget(self.edit_reflexion)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        
-        save_edit_btn = QPushButton("Änderungen speichern")
+        layout.addStretch()
+
+        splitter.addWidget(edit_scroll)
+        splitter.setSizes([200, 600])
+
+        # ── Aktionsleiste (außerhalb der ScrollArea, immer sichtbar) ──────
+        _sep = QLabel()
+        _sep.setFixedHeight(1)
+        _sep.setStyleSheet("background:#ccc;")
+        outer_layout.addWidget(_sep)
+
+        # Zeile 1: Primäre Aktionen (Speichern / KI-Neugenerierung)
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+        save_edit_btn = QPushButton("💾  Änderungen speichern")
+        save_edit_btn.setToolTip(
+            "Alle Felder in der Datenbank aktualisieren\n"
+            "und PDF / Word-Dokument neu erstellen.")
+        save_edit_btn.setMinimumHeight(36)
+        save_edit_btn.setStyleSheet(
+            "QPushButton{background:#2e7d32;color:#fff;font-weight:bold;"
+            "border-radius:5px;padding:6px 18px;border:none;}"
+            "QPushButton:hover{background:#388e3c;}")
         save_edit_btn.clicked.connect(self.save_edit)
-        button_layout.addWidget(save_edit_btn)
+        row1.addWidget(save_edit_btn)
 
-        regen_btn = QPushButton("Mit KI neu generieren")
+        regen_btn = QPushButton("🤖  Bericht komplett neu generieren (KI)")
+        regen_btn.setToolTip(
+            "Claude schreibt den Berichtinhalt vollständig neu.\n"
+            "Das Alarmierungsstichwort muss angegeben sein.\n"
+            "Optionaler KI-Kontext (Feld oben) möglich.")
+        regen_btn.setMinimumHeight(36)
+        regen_btn.setStyleSheet(
+            "QPushButton{background:#1565c0;color:#fff;font-weight:bold;"
+            "border-radius:5px;padding:6px 18px;border:none;}"
+            "QPushButton:hover{background:#1976D2;}")
         regen_btn.clicked.connect(self.regenerate_edit_report)
-        button_layout.addWidget(regen_btn)
+        row1.addWidget(regen_btn)
+        row1.addStretch()
+        outer_layout.addLayout(row1)
 
-        export_pdf_btn = QPushButton("Als PDF exportieren")
+        # Zeile 2: Export-Buttons
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        _export_lbl = QLabel("Exportieren als:")
+        _export_lbl.setStyleSheet("font-weight:bold;")
+        row2.addWidget(_export_lbl)
+
+        export_pdf_btn = QPushButton("📄 PDF")
+        export_pdf_btn.setToolTip("Aktuellen Bericht als PDF exportieren und speichern")
         export_pdf_btn.clicked.connect(lambda: self.export_current_bericht('pdf'))
-        button_layout.addWidget(export_pdf_btn)
+        row2.addWidget(export_pdf_btn)
 
-        export_word_btn = QPushButton("Als Word exportieren")
+        export_word_btn = QPushButton("📝 Word (.docx)")
+        export_word_btn.setToolTip("Aktuellen Bericht als Word-Dokument exportieren")
         export_word_btn.clicked.connect(lambda: self.export_current_bericht('word'))
-        button_layout.addWidget(export_word_btn)
+        row2.addWidget(export_word_btn)
 
-        export_odf_btn = QPushButton("Als ODF exportieren")
+        export_odf_btn = QPushButton("📄 ODF (.odt)")
+        export_odf_btn.setToolTip("Aktuellen Bericht als OpenDocument-Text exportieren")
         export_odf_btn.clicked.connect(lambda: self.export_current_bericht('odf'))
-        button_layout.addWidget(export_odf_btn)
+        row2.addWidget(export_odf_btn)
 
-        export_pages_btn = QPushButton("Als Pages exportieren")
+        export_pages_btn = QPushButton("🍎 Pages")
+        export_pages_btn.setToolTip("Aktuellen Bericht als Apple Pages exportieren")
         export_pages_btn.clicked.connect(lambda: self.export_current_bericht('pages'))
-        button_layout.addWidget(export_pages_btn)
+        row2.addWidget(export_pages_btn)
+        row2.addStretch()
+        outer_layout.addLayout(row2)
 
-        layout.addLayout(button_layout)
-
-        splitter.addWidget(form_container)
-        splitter.setSizes([200, 500])
-
-        self.tabs.addTab(view_edit_widget, "Ansehen/Bearbeiten")
+        self.tabs.addTab(view_edit_widget, "📂  Ansehen / Bearbeiten")
 
     def setup_beispiele_tab(self):
         """Erstellt den Tab für Stilvorlagen (Beispielberichte)"""
@@ -1778,6 +1962,12 @@ class MainWindow(QMainWindow):
         bericht_id = int(self.edit_list_table.item(row, 0).text())
         bericht = self.db.bericht_abrufen(bericht_id)
         if bericht:
+            self._edit_bericht_banner.setText(
+                f"✏\ufe0f  Geladener Bericht:  ID {bericht['id']}  –  {bericht['titel']}  "
+                f"│  Alarmierung: {bericht['thema']}")
+            self._edit_bericht_banner.setStyleSheet(
+                "background:#e8f5e9;color:#1b5e20;border:1px solid #66bb6a;"
+                "border-radius:4px;padding:6px 10px;font-weight:bold;")
             self.edit_id.setText(str(bericht['id']))
             self.edit_titel.setText(bericht['titel'])
             self.edit_thema.setText(bericht['thema'])
@@ -1824,6 +2014,12 @@ class MainWindow(QMainWindow):
         
         bericht = self.db.bericht_abrufen(bericht_id)
         if bericht:
+            self._edit_bericht_banner.setText(
+                f"✏\ufe0f  Geladener Bericht:  ID {bericht['id']}  –  {bericht['titel']}  "
+                f"│  Alarmierung: {bericht['thema']}")
+            self._edit_bericht_banner.setStyleSheet(
+                "background:#e8f5e9;color:#1b5e20;border:1px solid #66bb6a;"
+                "border-radius:4px;padding:6px 10px;font-weight:bold;")
             self.edit_id.setText(str(bericht['id']))
             self.edit_titel.setText(bericht['titel'])
             self.edit_thema.setText(bericht['thema'])

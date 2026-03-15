@@ -49,7 +49,7 @@ class ReportGenerator:
     def _split_at_abcde(inhalt: str):
         """Splits inhalt into (before, after) at the ABCDE= block. Returns (inhalt, None) if none found."""
         lines = inhalt.split('\n')
-        pat = re.compile(r'^\s*[A-Ea-e]\s*=')
+        pat = re.compile(r'^\s*[XxA-Ea-e]\s*=')
         start = None
         end = None
         for i, line in enumerate(lines):
@@ -149,7 +149,7 @@ class ReportGenerator:
 
         # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
-            abcde = abcde_data.get('ABCDE', {})
+            abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
             rows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
                      Paragraph(str(v), body_style)]
                     for k, v in abcde.items() if str(v).strip()]
@@ -166,7 +166,7 @@ class ReportGenerator:
                     ('LEFTPADDING', (0, 0), (-1, -1), 5),
                 ]))
                 story.append(KeepTogether([
-                    Paragraph('<b>ABCDE-Schema</b>', heading_style),
+                    Paragraph('<b>xABCDE-Schema</b>', heading_style),
                     tbl,
                 ]))
                 story.append(Spacer(1, 0.3*cm))
@@ -280,10 +280,10 @@ class ReportGenerator:
 
         # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
-            abcde = abcde_data.get('ABCDE', {})
+            abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if abcde_rows:
-                h = doc.add_heading('ABCDE-Schema', 2)
+                h = doc.add_heading('xABCDE-Schema', 2)
                 h.paragraph_format.keep_with_next = True
                 tbl = doc.add_table(rows=len(abcde_rows), cols=2)
                 tbl.style = 'Table Grid'
@@ -396,10 +396,10 @@ class ReportGenerator:
 
         # ABCDE-Schema inline
         if abcde_data:
-            abcde = abcde_data.get('ABCDE', {})
+            abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if abcde_rows:
-                doc.text.addElement(H(outlinelevel=2, text="ABCDE-Schema"))
+                doc.text.addElement(H(outlinelevel=2, text="xABCDE-Schema"))
                 for key, val in abcde_rows:
                     doc.text.addElement(P(stylename=text_style, text=f"{key}  {val}"))
                 doc.text.addElement(P(text=""))
@@ -452,10 +452,10 @@ class ReportGenerator:
 
         abcde_lines = []
         if abcde_data:
-            abcde = abcde_data.get('ABCDE', {})
+            abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
             rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if rows:
-                abcde_lines = ["ABCDE-Schema:"] + [f"  {k}  {v}" for k, v in rows] + [""]
+                abcde_lines = ["xABCDE-Schema:"] + [f"  {k}  {v}" for k, v in rows] + [""]
         vw_lines = []
         if vitalwerte:
             vw_map = {k: (lbl, unit) for k, lbl, unit in self._VITAL_LABELS}

@@ -1022,7 +1022,7 @@ class MainWindow(QMainWindow):
         ]
         for name, sub in komplex_defs:
             w = SchemaWidget(name, sub)
-            if name == "ABCDE":
+            if name == "xABCDE":
                 w.setChecked(True)
             schemata_vlayout.addWidget(w)
             self.schema_widgets[name] = w
@@ -1126,7 +1126,8 @@ class MainWindow(QMainWindow):
 
         # Re-create schema widgets inside dialog
         komplex_defs = [
-            ("ABCDE", [
+            ("xABCDE", [
+                ("x", "X – Exsanguination", "z.B. Tourniquet, Wundpacking, Blutung gestillt"),
                 ("a", "A – Atemweg", "frei / verlegt / gesichert"),
                 ("b", "B – Beatmung", "Atemgeräusch bds., Ventilation"),
                 ("c", "C – Kreislauf", "Pulse, Rekapillarisierung, Haut"),
@@ -1968,8 +1969,8 @@ class MainWindow(QMainWindow):
         self.new_rettungsmittel_widget.clear()
         for widget in self.schema_widgets.values():
             widget.clear_values()
-        if 'ABCDE' in self.schema_widgets:
-            self.schema_widgets['ABCDE'].setChecked(True)
+        if 'xABCDE' in self.schema_widgets:
+            self.schema_widgets['xABCDE'].setChecked(True)
         for cb, inp in self.schema_simple.values():
             cb.setChecked(False)
             inp.clear()

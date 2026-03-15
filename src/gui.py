@@ -969,6 +969,132 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(new_report_widget, "Neuer Bericht")
     
+    def _popup_schema_edit(self):
+        """Öffnet einen Dialog zum Bearbeiten der gespeicherten Schemata (ABCDE, OPQRST, SAMPLER + einfache)."""
+        import json as _json
+        from PySide6.QtWidgets import QScrollArea
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Schemata bearbeiten")
+        dlg.resize(740, 620)
+        dlg_layout = QVBoxLayout(dlg)
+
+        # Current abcde_json → dict
+        current = _json.loads(self._edit_abcde_json or '{}')
+
+        # Re-create schema widgets inside dialog
+        komplex_defs = [
+            ("ABCDE", [
+                ("a", "A – Atemweg", "frei / verlegt / gesichert"),
+                ("b", "B – Beatmung", "Atemgeräusch bds., Ventilation"),
+                ("c", "C – Kreislauf", "Pulse, Rekapillarisierung, Haut"),
+                ("d", "D – Neurologie", "orientiert, Pupillen, Motorik"),
+                ("e", "E – Bodycheck", "Haut, Verletzungen, Ödeme"),
+            ]),
+            ("OPQRST", [
+                ("o", "O – Onset", "z.B. plötzlich beim Frühstück"),
+                ("p", "P – Provocation", "z.B. verstärkt bei Belastung"),
+                ("q", "Q – Quality", "z.B. drückend, brennend, stechend"),
+                ("r", "R – Radiation", "z.B. in linken Arm, Kiefer"),
+                ("s", "S – Severity", "z.B. 8/10"),
+                ("t", "T – Time", "z.B. seit 30 Minuten anhaltend"),
+            ]),
+            ("SAMPLER", [
+                ("s", "S – Symptoms", "z.B. Brustschmerz, Atemnot"),
+                ("a", "A – Allergies", "z.B. keine / Penicillin"),
+                ("m", "M – Medications", "z.B. ASS 100 mg, Bisoprolol"),
+                ("p", "P – Past history", "z.B. KHK seit 2019"),
+                ("l", "L – Last meal", "z.B. vor 2 Stunden"),
+                ("e", "E – Events", "z.B. Schmerz beim Aufstehen"),
+                ("r", "R – Risk factors", "z.B. Raucher 30 py"),
+            ]),
+        ]
+        simple_defs = [
+            ("NACA-Score", "z.B. IV – lebensbedrohliche Erkrankung"),
+            ("GCS",        "z.B. A4 V5 M6 = 15"),
+            ("VAS",        "Schmerzstärke 0–10"),
+            ("12-Kanal-EKG", "z.B. SR HF 72/min, ST-Hebung II/III/aVF"),
+        ]
+
+        container = QWidget()
+        c_layout = QVBoxLayout(container)
+        c_layout.setSpacing(6)
+        dlg_schema_widgets = {}
+        for name, sub in komplex_defs:
+            w = SchemaWidget(name, sub)
+            sub_data = current.get(name, {})
+            if sub_data:
+                w.set_values(sub_data)
+            else:
+                w.setChecked(False)
+            c_layout.addWidget(w)
+            dlg_schema_widgets[name] = w
+
+        # Simple schemas
+        dlg_simple = {}
+        simple_form = QFormLayout()
+        for name, ph in simple_defs:
+            row_w = QWidget()
+            row_l = QHBoxLayout(row_w)
+            row_l.setContentsMargins(0, 0, 0, 0)
+            cb = QCheckBox()
+            inp = QLineEdit()
+            inp.setPlaceholderText(ph)
+            inp.setEnabled(False)
+            cb.toggled.connect(inp.setEnabled)
+            val = current.get(name, '')
+            if val:
+                inp.setText(str(val))
+                cb.setChecked(True)
+                inp.setEnabled(True)
+            row_l.addWidget(cb)
+            row_l.addWidget(inp)
+            dlg_simple[name] = (cb, inp)
+            simple_form.addRow(name + ":", row_w)
+        simple_w = QWidget()
+        simple_w.setLayout(simple_form)
+        c_layout.addWidget(simple_w)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(container)
+        dlg_layout.addWidget(scroll)
+
+        btn_row = QHBoxLayout()
+        ok_btn = QPushButton("Übernehmen")
+        cancel_btn = QPushButton("Abbrechen")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch()
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(cancel_btn)
+        dlg_layout.addLayout(btn_row)
+
+        if dlg.exec() == QDialog.Accepted:
+            new_schema = {}
+            for name, w in dlg_schema_widgets.items():
+                if w.isChecked():
+                    new_schema[name] = {k: v.text().strip() for k, v in w.inputs.items()}
+            for name, (cb, inp) in dlg_simple.items():
+                if cb.isChecked() and inp.text().strip():
+                    new_schema[name] = inp.text().strip()
+            self._edit_abcde_json = _json.dumps(new_schema, ensure_ascii=False)
+            self._update_schema_summary_label(new_schema)
+
+    def _update_schema_summary_label(self, schema_dict: dict):
+        """Aktualisiert das Label das zeigt welche Schemata gesetzt sind."""
+        if not schema_dict:
+            self._schema_summary_label.setText("(keine Schemata gespeichert)")
+            return
+        parts = []
+        for name, val in schema_dict.items():
+            if isinstance(val, dict):
+                filled = sum(1 for v in val.values() if str(v).strip())
+                parts.append(f"{name} ({filled} Felder)")
+            elif val:
+                parts.append(name)
+        self._schema_summary_label.setText(", ".join(parts) if parts else "(keine)")
+
     def _popup_vitalwerte(self):
         """Öffnet einen großen Dialog zum Bearbeiten der Vitalwerte."""
         from PySide6.QtWidgets import QScrollArea
@@ -1103,6 +1229,20 @@ class MainWindow(QMainWindow):
         layout.addLayout(_inhalt_header)
         self.edit_inhalt = QTextEdit()
         layout.addWidget(self.edit_inhalt)
+
+        # ── Schemata ─────────────────────────────────────────────────
+        _schema_header = QHBoxLayout()
+        _schema_header.addWidget(QLabel("<b>Schemata (ABCDE / OPQRST / SAMPLER …):</b>"))
+        _schema_header.addStretch()
+        _schema_popup_btn = QPushButton("⛶  Schemata bearbeiten")
+        _schema_popup_btn.clicked.connect(self._popup_schema_edit)
+        _schema_header.addWidget(_schema_popup_btn)
+        layout.addLayout(_schema_header)
+        self._edit_abcde_json = '{}'
+        self._schema_summary_label = QLabel("(kein Bericht geladen)")
+        self._schema_summary_label.setWordWrap(True)
+        self._schema_summary_label.setStyleSheet("color: #555; font-style: italic; padding: 2px 4px;")
+        layout.addWidget(self._schema_summary_label)
 
         self.edit_vitalwerte_widget = VitalwerteWidget()
         # in ScrollArea einbetten damit alle Felder erreichbar sind
@@ -1383,7 +1523,9 @@ class MainWindow(QMainWindow):
             self.edit_vitalwerte_widget.clear()
             if vw:
                 self.edit_vitalwerte_widget.set_vitalwerte(vw)
-    
+            self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
+            self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
+
     def search_berichte(self):
         """Sucht Berichte basierend auf der Sucheingabe"""
         search_term = self.search_input.text()
@@ -1427,7 +1569,9 @@ class MainWindow(QMainWindow):
             self.edit_vitalwerte_widget.clear()
             if vw:
                 self.edit_vitalwerte_widget.set_vitalwerte(vw)
-            
+            self._edit_abcde_json = bericht.get('abcde_json', '') or '{}'
+            self._update_schema_summary_label(_json.loads(self._edit_abcde_json or '{}'))
+
             self.tabs.setCurrentIndex(2)  # Wechsle zu Tab "Ansehen/Bearbeiten"
     
     def delete_bericht(self):
@@ -1642,12 +1786,11 @@ class MainWindow(QMainWindow):
         reflexion = self.edit_reflexion.toPlainText()
         import json as _json
         vitalwerte_json = _json.dumps(self.edit_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
-        # ABCDE aus DB beibehalten (kein Schema-Editor im Bearbeiten-Tab)
-        bericht_db = self.db.bericht_abrufen(bericht_id)
-        abcde_json = (bericht_db or {}).get('abcde_json', '') or ''
-        
+        abcde_json = self._edit_abcde_json or '{}'
+
         self.db.bericht_aktualisieren(bericht_id, titel=titel, thema=thema, inhalt=inhalt,
-                                       reflexion=reflexion, vitalwerte_json=vitalwerte_json)
+                                       reflexion=reflexion, vitalwerte_json=vitalwerte_json,
+                                       abcde_json=abcde_json)
 
         # Optional: Neue Dokumente generieren
         ff = self.font_family_combo.currentText()

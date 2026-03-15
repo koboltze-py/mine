@@ -969,6 +969,31 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(new_report_widget, "Neuer Bericht")
     
+    def _popup_text_edit(self, textedit: QTextEdit, title: str):
+        """Öffnet einen großen Dialog zum Bearbeiten eines QTextEdit-Feldes."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.resize(980, 680)
+        dlg_layout = QVBoxLayout(dlg)
+        editor = QTextEdit()
+        editor.setPlainText(textedit.toPlainText())
+        font = textedit.font()
+        font.setPointSize(max(font.pointSize(), 11))
+        editor.setFont(font)
+        dlg_layout.addWidget(editor)
+        btn_row = QHBoxLayout()
+        ok_btn = QPushButton("Übernehmen")
+        cancel_btn = QPushButton("Abbrechen")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch()
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(cancel_btn)
+        dlg_layout.addLayout(btn_row)
+        if dlg.exec() == QDialog.Accepted:
+            textedit.setPlainText(editor.toPlainText())
+
     def setup_view_edit_tab(self):
         """Erstellt den Tab zum Ansehen/Bearbeiten"""
         view_edit_widget = QWidget()
@@ -1020,17 +1045,34 @@ class MainWindow(QMainWindow):
         self.edit_kontext = QTextEdit()
         self.edit_kontext.setMaximumHeight(70)
         self.edit_kontext.setPlaceholderText("Kontext für KI-Neugenerierung (optional)...")
+        _kontext_container = QWidget()
+        _kontext_vbox = QVBoxLayout(_kontext_container)
+        _kontext_vbox.setContentsMargins(0, 0, 0, 0)
+        _kontext_vbox.setSpacing(2)
+        _kontext_vbox.addWidget(self.edit_kontext)
+        _kontext_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _kontext_popup_btn.setMaximumWidth(180)
+        _kontext_popup_btn.clicked.connect(
+            lambda: self._popup_text_edit(self.edit_kontext, "Kontext bearbeiten"))
+        _kontext_vbox.addWidget(_kontext_popup_btn)
 
         form_layout.addRow("Bericht-ID:", self.edit_id)
         form_layout.addRow("Titel:", self.edit_titel)
         form_layout.addRow("Alarmierung:", self.edit_thema)
         form_layout.addRow("Seitenzahl (KI):", self.edit_seitenzahl)
-        form_layout.addRow("Kontext (KI):", self.edit_kontext)
+        form_layout.addRow("Kontext (KI):", _kontext_container)
         
         layout.addLayout(form_layout)
         
         # Inhalt
-        layout.addWidget(QLabel("Inhalt:"))
+        _inhalt_header = QHBoxLayout()
+        _inhalt_header.addWidget(QLabel("<b>Inhalt:</b>"))
+        _inhalt_header.addStretch()
+        _inhalt_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _inhalt_popup_btn.clicked.connect(
+            lambda: self._popup_text_edit(self.edit_inhalt, "Inhalt bearbeiten – Vollbild"))
+        _inhalt_header.addWidget(_inhalt_popup_btn)
+        layout.addLayout(_inhalt_header)
         self.edit_inhalt = QTextEdit()
         layout.addWidget(self.edit_inhalt)
 
@@ -1038,7 +1080,14 @@ class MainWindow(QMainWindow):
         self.edit_vitalwerte_widget.setMaximumHeight(320)
         layout.addWidget(self.edit_vitalwerte_widget)
 
-        layout.addWidget(QLabel("Einsatzreflexion:"))
+        _refl_header = QHBoxLayout()
+        _refl_header.addWidget(QLabel("<b>Einsatzreflexion:</b>"))
+        _refl_header.addStretch()
+        _refl_popup_btn = QPushButton("⛶  Vollbild bearbeiten")
+        _refl_popup_btn.clicked.connect(
+            lambda: self._popup_text_edit(self.edit_reflexion, "Einsatzreflexion bearbeiten – Vollbild"))
+        _refl_header.addWidget(_refl_popup_btn)
+        layout.addLayout(_refl_header)
         self.edit_reflexion = QTextEdit()
         self.edit_reflexion.setMaximumHeight(100)
         self.edit_reflexion.setPlaceholderText("Eigene Reflexion zum Einsatz...")

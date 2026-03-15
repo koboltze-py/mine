@@ -245,7 +245,7 @@ class ClaudeAPIHandler:
         if vitalwerte:
             vw_label = {
                 'rr': ('RR', 'mmHg'), 'hf': ('HF', '/min'), 'spo2': ('SpO2', '%'),
-                'spco': ('SpCO', '%'), 'af': ('AF', '/min'), 'bz': ('BZ', 'mmol/l'),
+                'spco': ('SpCO', '%'), 'af': ('AF', '/min'), 'bz': ('BZ', 'mg/dl'),
                 'temp': ('Temp', '\u00b0C'), 'gcs': ('GCS', ''), 'etco2': ('EtCO2', 'mmHg'),
             }
             vw_lines = []
@@ -581,7 +581,7 @@ class ClaudeAPIHandler:
             '  "spo2": "z.B. 94",\n'
             '  "spco": "z.B. 0",\n'
             '  "af": "z.B. 18",\n'
-            '  "bz": "z.B. 5.8",\n'
+            '  "bz": "z.B. 105",\n'
             '  "temp": "z.B. 36.8",\n'
             '  "gcs": "z.B. A4 V5 M6 = 15",\n'
             '  "etco2": "z.B. 38 oder leer"\n'
@@ -707,7 +707,7 @@ class ClaudeAPIHandler:
             f'    "spo2": "z.B. 94",\n'
             f'    "spco": "z.B. 0",\n'
             f'    "af": "z.B. 18",\n'
-            f'    "bz": "z.B. 5.8",\n'
+            f'    "bz": "z.B. 105 (mg/dl)",\n'
             f'    "temp": "z.B. 36.8",\n'
             f'    "gcs": "z.B. A4 V5 M6 = 15",\n'
             f'    "etco2": "z.B. 38 oder leer"\n'

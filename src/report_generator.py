@@ -42,7 +42,7 @@ class ReportGenerator:
         ('spo2',  'SpO2',   '%'),
         ('spco',  'SpCO',   '%'),
         ('af',    'AF',     '/min'),
-        ('bz',    'BZ',     'mmol/l'),
+        ('bz',    'BZ',     'mg/dl'),
         ('temp',  'Temp',   '°C'),
         ('gcs',   'GCS',    ''),
         ('etco2', 'EtCO2',  'mmHg'),

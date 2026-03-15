@@ -373,11 +373,21 @@ class SchemaWidget(QGroupBox):
         for key, label, ph in sub_fields:
             inp = QLineEdit()
             inp.setPlaceholderText(ph)
+            # Auto-check GroupBox when user types something
+            inp.textChanged.connect(lambda text, w=self: w.setChecked(True) if text.strip() else None)
             form.addRow(label + ":", inp)
             self.inputs[key] = inp
+        # Always keep child widgets enabled so user can type without clicking checkbox first
+        self.toggled.connect(self._on_toggled)
+
+    def _on_toggled(self, checked: bool):
+        """Re-enable all inputs when group is toggled (PySide6 disables them when unchecked)."""
+        for inp in self.inputs.values():
+            inp.setEnabled(True)
 
     def schema_text(self):
-        if not self.isChecked():
+        has_content = any(self.inputs[k].text().strip() for k, *_ in self._defs)
+        if not self.isChecked() and not has_content:
             return None
         parts = []
         for key, label, _ in self._defs:
@@ -1034,8 +1044,8 @@ class MainWindow(QMainWindow):
             cb = QCheckBox()
             inp = QLineEdit()
             inp.setPlaceholderText(ph)
-            inp.setEnabled(False)
-            cb.toggled.connect(inp.setEnabled)
+            # Always enabled – auto-check when user types
+            inp.textChanged.connect(lambda t, _cb=cb: _cb.setChecked(bool(t.strip())))
             row_l.addWidget(cb)
             row_l.addWidget(inp)
             self.schema_simple[name] = (cb, inp)
@@ -1172,13 +1182,12 @@ class MainWindow(QMainWindow):
             cb = QCheckBox()
             inp = QLineEdit()
             inp.setPlaceholderText(ph)
-            inp.setEnabled(False)
-            cb.toggled.connect(inp.setEnabled)
+            # Always enabled – auto-check when user types
+            inp.textChanged.connect(lambda t, _cb=cb: _cb.setChecked(bool(t.strip())))
             val = current.get(name, '')
             if val:
                 inp.setText(str(val))
                 cb.setChecked(True)
-                inp.setEnabled(True)
             row_l.addWidget(cb)
             row_l.addWidget(inp)
             dlg_simple[name] = (cb, inp)
@@ -1209,7 +1218,7 @@ class MainWindow(QMainWindow):
                 if w.isChecked():
                     new_schema[name] = {k: v.text().strip() for k, v in w.inputs.items()}
             for name, (cb, inp) in dlg_simple.items():
-                if cb.isChecked() and inp.text().strip():
+                if inp.text().strip():
                     new_schema[name] = inp.text().strip()
             self._edit_abcde_json = _json.dumps(new_schema, ensure_ascii=False)
             self._update_schema_summary_label(new_schema)
@@ -1809,9 +1818,9 @@ class MainWindow(QMainWindow):
             if text:
                 schemata.append(text)
         for name, (cb, inp) in self.schema_simple.items():
-            if cb.isChecked():
-                val = inp.text().strip()
-                schemata.append(f"{name}: {val}" if val else name)
+            val = inp.text().strip()
+            if val:
+                schemata.append(f"{name}: {val}")
         medikamente = self.new_medikamente_widget.get_text()
         rettungsmittel = self.new_rettungsmittel_widget.get_text()
         vitalwerte = self.new_vitalwerte_widget.get_vitalwerte()
@@ -1916,10 +1925,11 @@ class MainWindow(QMainWindow):
         import json as _json
         schema_data = {}
         for name, widget in self.schema_widgets.items():
-            if widget.isChecked():
+            has_content = any(v.text().strip() for v in widget.inputs.values())
+            if widget.isChecked() or has_content:
                 schema_data[name] = {k: v.text().strip() for k, v in widget.inputs.items()}
         for name, (cb, inp) in self.schema_simple.items():
-            if cb.isChecked():
+            if inp.text().strip():
                 schema_data[name] = inp.text().strip()
         abcde_json = _json.dumps(schema_data, ensure_ascii=False)
         vitalwerte_json = _json.dumps(self.new_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)

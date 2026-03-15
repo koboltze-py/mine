@@ -36,13 +36,13 @@ class ReportGenerator:
     _VITAL_LABELS = [
         ('rr',    'RR',     'mmHg'),
         ('hf',    'HF',     '/min'),
-        ('spo2',  'SpO₂',   '%'),
+        ('spo2',  'SpO2',   '%'),
         ('spco',  'SpCO',   '%'),
         ('af',    'AF',     '/min'),
         ('bz',    'BZ',     'mmol/l'),
         ('temp',  'Temp',   '°C'),
         ('gcs',   'GCS',    ''),
-        ('etco2', 'EtCO₂',  'mmHg'),
+        ('etco2', 'EtCO2',  'mmHg'),
     ]
 
     def generate_pdf(self, titel: str, thema: str, inhalt: str, bericht_id: int,
@@ -172,9 +172,11 @@ class ReportGenerator:
 
         # Inhalt
         story.append(Paragraph("<b>BERICHT:</b>", heading_style))
-        
+
+        # ABCDE-Zeilen aus Fließtext entfernen wenn Tabelle vorhanden
+        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
         # Inhalt in Paragraphen aufteilen
-        for absatz in inhalt.split('\n'):
+        for absatz in _inhalt.split('\n'):
             if absatz.strip():
                 # Prüfe ob es eine Überschrift ist (z.B. beginnt mit Nummer oder ist in Großbuchstaben)
                 if absatz.strip().isupper() or absatz.strip()[0].isdigit():
@@ -283,8 +285,10 @@ class ReportGenerator:
         # Bericht Überschrift
         doc.add_heading('BERICHT', 1)
         
+        # ABCDE-Zeilen aus Fließtext entfernen wenn Tabelle vorhanden
+        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
         # Inhalt (keep_with_next auf Überschriften)
-        for absatz in inhalt.split('\n'):
+        for absatz in _inhalt.split('\n'):
             if absatz.strip():
                 # Prüfe ob es eine Überschrift ist
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
@@ -372,7 +376,8 @@ class ReportGenerator:
         doc.text.addElement(H(outlinelevel=2, text="BERICHT:"))
         doc.text.addElement(P(text=""))
 
-        for absatz in inhalt.split('\n'):
+        _inhalt = re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt
+        for absatz in _inhalt.split('\n'):
             if absatz.strip():
                 if absatz.strip().isupper() or (absatz.strip() and absatz.strip()[0].isdigit()):
                     doc.text.addElement(H(outlinelevel=3, text=absatz))
@@ -424,7 +429,7 @@ class ReportGenerator:
             + abcde_lines
             + vw_lines
             + ["BERICHT:", ""]
-            + inhalt.split('\n')
+            + (re.sub(r'(?m)^\s*[A-Ea-e]\s*=.*', '', inhalt) if abcde_data else inhalt).split('\n')
             + ([""]+reflexion_lines if reflexion_lines else [])
         )
 

@@ -1,0 +1,19 @@
+# Konfigurationsdatei für Einsatzbericht Manager
+
+[DATABASE]
+path = data/einsatzberichte.db
+
+[REPORTS]
+output_dir = reports
+
+[BEISPIELE]
+path = data/beispiele
+
+[API]
+# Setzen Sie Ihren API Key als Umgebungsvariable ANTHROPIC_API_KEY
+# oder tragen Sie ihn hier ein
+anthropic_api_key = DEIN_API_KEY_HIER
+
+[GUI]
+window_width = 1000
+window_height = 700

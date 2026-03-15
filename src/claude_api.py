@@ -1,0 +1,459 @@
+"""
+Claude API Handler für Einsatzberichte
+"""
+import anthropic
+import os
+from typing import Optional, List
+
+
+class ClaudeAPIHandler:
+    def __init__(self, api_key: Optional[str] = None, beispiele_pfad: str = "examples"):
+        """
+        Initialisiert den Claude API Handler
+
+        Args:
+            api_key: Claude API Key (falls nicht angegeben, wird ANTHROPIC_API_KEY aus env verwendet)
+            beispiele_pfad: Pfad zum Ordner mit Beispielberichten (für Stilvorlage)
+        """
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not self.api_key:
+            raise ValueError("Claude API Key nicht gefunden. Bitte setzen Sie ANTHROPIC_API_KEY als Umgebungsvariable oder übergeben Sie den Key.")
+
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.beispiele = self._load_beispiele(beispiele_pfad)
+
+    def _load_beispiele(self, pfad: str) -> List[str]:
+        """Lädt Beispielberichte aus dem angegebenen Ordner als Stilvorlagen (.txt, .docx, .odt, .pdf, .pages)."""
+        beispiele = []
+        if not os.path.isdir(pfad):
+            return beispiele
+        for fname in sorted(os.listdir(pfad)):
+            fpath = os.path.join(pfad, fname)
+            ext = fname.lower().rsplit('.', 1)[-1]
+            try:
+                if ext == 'txt':
+                    with open(fpath, 'r', encoding='utf-8') as f:
+                        text = f.read().strip()
+                elif ext == 'docx':
+                    from docx import Document
+                    doc = Document(fpath)
+                    text = '\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+                elif ext == 'odt':
+                    from odf.opendocument import load
+                    from odf.text import P
+                    from odf import teletype
+                    doc = load(fpath)
+                    text = '\n'.join(
+                        teletype.extractText(p)
+                        for p in doc.text.getElementsByType(P)
+                        if teletype.extractText(p).strip()
+                    )
+                elif ext == 'pdf':
+                    from pypdf import PdfReader
+                    reader = PdfReader(fpath)
+                    lines = []
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            lines.append(t)
+                    text = '\n'.join(lines).strip()
+                elif ext == 'pages':
+                    import zipfile, xml.etree.ElementTree as ET, re as _re
+                    text = ''
+                    try:
+                        with zipfile.ZipFile(fpath, 'r') as zf:
+                            names = zf.namelist()
+                            if 'index.xml' in names:
+                                with zf.open('index.xml') as f:
+                                    content = f.read().decode('utf-8', errors='ignore')
+                                try:
+                                    root = ET.fromstring(content)
+                                    parts = []
+                                    for elem in root.iter():
+                                        tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+                                        if tag == 'content' and elem.text and elem.text.strip():
+                                            parts.append(elem.text.strip())
+                                    text = '\n'.join(parts)
+                                except ET.ParseError:
+                                    text = ' '.join(t.strip() for t in _re.findall(r'>([^<]+)<', content) if t.strip())
+                            else:
+                                # Neues Pages-Format (post-2013): .iwa Binärdateien
+                                # Textfragmente mittels Byte-Scan extrahieren
+                                import re as _re2
+                                parts = []
+                                for iwa_name in names:
+                                    if not iwa_name.endswith('.iwa'):
+                                        continue
+                                    raw = zf.read(iwa_name)
+                                    for m in _re2.finditer(
+                                        rb'(?:[A-Za-z\xc3\xc4-\xc5\xe2\xef][\x20-\x7e\x80-\xbf]{3,}){2,}',
+                                        raw
+                                    ):
+                                        s = m.group().decode('utf-8', 'replace').strip()
+                                        s = _re2.sub(r'[^\w\s\.\,\!\?\-\:\;\(\)äöüÄÖÜß]', ' ', s)
+                                        s = _re2.sub(r'\s{2,}', ' ', s).strip()
+                                        if len(s) >= 8 and _re2.search(r'[a-zA-ZäöüÄÖÜß]{4}', s):
+                                            parts.append(s)
+                                text = '\n'.join(parts)
+                    except zipfile.BadZipFile:
+                        pass
+                    text = text.strip()
+                else:
+                    continue
+                if text:
+                    beispiele.append(text)
+            except Exception:
+                pass
+        return beispiele
+
+    # Metadaten-Wörter die beim IWA-Scan entstehen und herausgefiltert werden sollen
+    _METADATA_WOERTER = frozenset([
+        'januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august',
+        'september', 'oktober', 'november', 'dezember', 'jan', 'feb', 'mrz',
+        'apr', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dez',
+        'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag',
+        'gregorian', 'latn', 'de_de', 'de_dep', 'iso', 'isob', 'blank',
+        'application', 'standard', 'toc', 'quartal', 'chr',
+    ])
+
+    def _bereinige_zeilen(self, text: str) -> str:
+        """Entfernt Metadaten-/Formatzeilen aus IWA-extrahiertem Text."""
+        import re as _re
+        gute = []
+        for zeile in text.splitlines():
+            z = zeile.strip()
+            if not z or len(z) < 6:
+                continue
+            # Reine Datum-/Formatstrings überspringen (dd.MM.yy, MMMM, #,##0 …)
+            if _re.fullmatch(r'[\w\.\#,\s:;\-/%]+', z) and not _re.search(r'[a-zA-ZäöüÄÖÜß]{5}', z):
+                continue
+            # Zeilen die nur aus Metadaten-Wörtern bestehen überspringen
+            woerter = set(w.lower() for w in _re.findall(r'[a-zA-ZäöüÄÖÜß]+', z))
+            if woerter and woerter.issubset(self._METADATA_WOERTER):
+                continue
+            # Mindestens ein echtes Wort mit ≥4 Buchstaben
+            if not _re.search(r'[a-zA-ZäöüÄÖÜß]{4}', z):
+                continue
+            gute.append(z)
+        return '\n'.join(gute)
+
+    def _stil_kontext(self) -> str:
+        """Baut den Stilkontext-Block aus den Beispielberichten auf."""
+        if not self.beispiele:
+            return ""
+        teile = [
+            "STILVORLAGEN – Diese Berichte dienen NUR als Stil- und Formatreferenz.\n"
+            "Analysiere und übernimm daraus AUSSCHLIESSLICH:\n"
+            "  • Schreibstil, Ton, Erzählperspektive (Ich-Form etc.)\n"
+            "  • Gliederung und Abschnittsüberschriften\n"
+            "  • Fachbegriffe und Abkürzungen (RTW, NEF, Pat., GCS etc.)\n"
+            "Den INHALT (Namen, Orte, Diagnosen, Medikamente) aus den Vorlagen NICHT übernehmen.\n"
+        ]
+        for i, b in enumerate(self.beispiele, 1):
+            bereinigt = self._bereinige_zeilen(b)
+            if bereinigt:
+                teile.append(f"--- Beispielbericht {i} ---\n{bereinigt}\n")
+        teile.append("--- Ende der Stilvorlagen ---")
+        teile.append(
+            "\nSTIL-REGELN (zwingend einhalten):\n"
+            "- Identische Abschnittsüberschriften wie in den Vorlagen (z.B. Alarmierung, Vor Ort, Maßnahmen, Fazit)\n"
+            "- Gleiche Abkürzungen übernehmen (RTW, NEF, Pat., GCS, EG, UH, KH usw.)\n"
+            "- Gleiche Erzählperspektive (Ich-Form wenn Vorlage Ich-Form nutzt)\n"
+            "- Gleiche Detailtiefe: konkrete Uhrzeiten, Straßen, Befunde, Vitalwerte\n"
+            "- Gleiche medizinischen/fachlichen Schemata (ABCDE, OPQRST, SAMPLER etc.) falls in Vorlage vorhanden\n"
+            "- Gleicher informeller aber fachlicher Ton\n"
+        )
+        return "\n".join(teile)
+    
+    def einsatzbericht_erstellen(self, thema: str, zusaetzliche_infos: str = "",
+                                 seitenzahl: int = 2, datum: str = "",
+                                 uhrzeit: str = "", stichwort: str = "",
+                                 schemata: list = None, medikamente: str = "",
+                                 rettungsmittel: str = "") -> str:
+        """
+        Erstellt einen Einsatzbericht.
+        Schreibstil und Format werden NUR aus den Beispielberichten abgeleitet (nicht der Inhalt).
+
+        Args:
+            thema: Einsatzstichwort / Thema
+            zusaetzliche_infos: Eigener Kontext / Zusatzinfos
+            seitenzahl: Gewünschter Umfang in DIN A4-Seiten
+            datum: Einsatzdatum (dd.MM.yyyy)
+            uhrzeit: Alarmierungszeit (HH:mm)
+            stichwort: Alarmierungsstichwort
+            schemata: Liste der anzuwendenden Schemata (ABCDE, OPQRST, SAMPLER…)
+            medikamente: Verabreichte Medikamente
+            rettungsmittel: Beteiligte Rettungsmittel
+        """
+        if schemata is None:
+            schemata = []
+        stil = self._stil_kontext()
+        seiten_info = f"Umfang: ca. {seitenzahl} DIN A4-Seite(n) – bitte entsprechend ausführlich formulieren."
+
+        # Einsatz-Detailblock aufbauen
+        details = []
+        if datum:
+            details.append(f"Datum: {datum}")
+        if uhrzeit:
+            details.append(f"Alarmierungszeit: {uhrzeit} Uhr")
+        if stichwort:
+            details.append(f"Alarmierungsstichwort: {stichwort}")
+        if rettungsmittel:
+            details.append(f"Beteiligte Rettungsmittel: {rettungsmittel}")
+        if medikamente:
+            details.append(f"Verabreichte Medikamente: {medikamente}")
+        if schemata:
+            schema_text = "\n".join(f"  - {s}" for s in schemata)
+            details.append(f"Schemata (im Bericht vollständig ausführen, eingetragene Befunde verwenden):\n{schema_text}")
+        if zusaetzliche_infos:
+            details.append(f"Zusätzliche Informationen / Kontext: {zusaetzliche_infos}")
+        detail_block = "\n".join(details)
+
+        if stil:
+            prompt = (
+                f"{stil}\n\n"
+                f"AUFGABE: Schreibe einen NEUEN, originellen Einsatzbericht.\n"
+                f"WICHTIG: Übernimm aus den Stilvorlagen AUSSCHLIESSLICH:\n"
+                f"  • Schreibstil, Ton, Perspektive (Ich-Form etc.)\n"
+                f"  • Gliederung / Abschnittsüberschriften\n"
+                f"  • Fachbegriffe und Abkürzungen (RTW, NEF, Pat., GCS etc.)\n"
+                f"  • Detailtiefe und Erzählweise\n"
+                f"NICHT übernehmen: Namen, Orte, Diagnosen, Medikamente aus den Vorlagen.\n\n"
+                f"EINSATZ-DATEN (diese konkret verwenden):\n{detail_block}\n\n"
+                f"{seiten_info}\n\n"
+                f"Erfinde realistische, stimmige Details für alles was nicht angegeben wurde "
+                f"(Straße, Hausnummer, Patientenalter/-geschlecht, Vitalwerte, Verlauf)."
+            )
+        else:
+            prompt = (
+                f"Erstelle einen professionellen Einsatzbericht für den Rettungsdienst.\n\n"
+                f"EINSATZ-DATEN:\n{detail_block}\n\n"
+                f"{seiten_info}\n\n"
+                f"Struktur: Alarmierung (Uhrzeit/Stichwort), Einsatzort, Lage bei Ankunft, "
+                f"Durchgeführte Maßnahmen (ABCDE-Schema), Medikamente/Therapie, Transport/Übergabe, Fazit.\n"
+                f"Erfinde realistische Details für fehlende Angaben."
+            )
+
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=4096,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            return message.content[0].text
+
+        except Exception as e:
+            raise Exception(f"Fehler beim Erstellen des Einsatzberichts: {str(e)}")
+    
+    def stil_analysieren(self) -> dict:
+        """
+        Lässt Claude die geladenen Beispielberichte analysieren und empfiehlt
+        Schriftart, Schriftgröße und liefert eine Stil-Beschreibung.
+
+        Returns:
+            dict mit Schlüsseln:
+              'schriftart'     – z.B. "Arial" | "Times New Roman" | "Courier New"
+              'schriftgroesse' – int, z.B. 11
+              'beschreibung'   – kurzer Freitext zur Stil-Analyse
+        """
+        if not self.beispiele:
+            return {
+                'schriftart': 'Arial',
+                'schriftgroesse': 11,
+                'beschreibung': 'Keine Stilvorlagen vorhanden – Standardwerte verwendet.'
+            }
+
+        vorlagen_text = '\n\n'.join(
+            f"--- Vorlage {i+1} ---\n{b}" for i, b in enumerate(self.beispiele)
+        )
+
+        prompt = (
+            "Analysiere die folgenden Einsatzberichte und beantworte diese drei Fragen:\n\n"
+            "1. SCHRIFTART: Welche Schriftart passt am besten zum Stil dieser Berichte? "
+            "Wähle genau eine aus: Arial, Times New Roman, Courier New\n"
+            "2. SCHRIFTGRÖSSE: Welche Schriftgröße (in Punkt, ganzzahlig, zwischen 8 und 16) "
+            "ist für diesen Berichtsstil angemessen?\n"
+            "3. STIL-BESCHREIBUNG: Beschreibe den Schreibstil dieser Berichte in 2-3 Sätzen "
+            "(Ton, Struktur, Fachlichkeit).\n\n"
+            "Antworte AUSSCHLIESSLICH in diesem exakten Format (keine weiteren Texte):\n"
+            "SCHRIFTART: <name>\n"
+            "SCHRIFTGROESSE: <zahl>\n"
+            "STIL: <beschreibung>\n\n"
+            "Hier sind die Berichte:\n\n"
+            f"{vorlagen_text}"
+        )
+
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            antwort = message.content[0].text.strip()
+        except Exception as e:
+            raise Exception(f"Fehler bei der Stil-Analyse: {str(e)}")
+
+        # Parsen
+        result = {'schriftart': 'Arial', 'schriftgroesse': 11, 'beschreibung': antwort}
+        allowed_fonts = ['Arial', 'Times New Roman', 'Courier New']
+        for line in antwort.splitlines():
+            line = line.strip()
+            if line.upper().startswith('SCHRIFTART:'):
+                val = line.split(':', 1)[1].strip()
+                if val in allowed_fonts:
+                    result['schriftart'] = val
+            elif line.upper().startswith('SCHRIFTGROESSE:') or line.upper().startswith('SCHRIFTGRÖẞE:'):
+                try:
+                    result['schriftgroesse'] = max(8, min(24, int(''.join(filter(str.isdigit, line.split(':', 1)[1])))))
+                except ValueError:
+                    pass
+            elif line.upper().startswith('STIL:'):
+                result['beschreibung'] = line.split(':', 1)[1].strip()
+        return result
+
+    def bericht_verbessern(self, original_bericht: str, verbesserungshinweise: str = "") -> str:
+        """
+        Verbessert einen bestehenden Einsatzbericht
+        
+        Args:
+            original_bericht: Der ursprüngliche Bericht
+            verbesserungshinweise: Spezifische Hinweise zur Verbesserung
+        
+        Returns:
+            Der verbesserte Einsatzbericht
+        """
+        stil = self._stil_kontext()
+        stil_block = f"{stil}\n\n" if stil else ""
+        hinweis = f'Bitte beachte folgende Verbesserungshinweise: {verbesserungshinweise}' if verbesserungshinweise else 'Verbessere Grammatik, Struktur und Professionalität.'
+        prompt = (
+            f"{stil_block}"
+            f"Verbessere den folgenden Einsatzbericht:\n\n{original_bericht}\n\n"
+            f"{hinweis}\n"
+            f"{'Halte dabei denselben Schreibstil, Ton und dieselbe Gliederung wie in den Stilvorlagen.' if stil else ''}\n\n"
+            f"Gib den vollständigen verbesserten Bericht zurück."
+        )
+
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2048,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            return message.content[0].text
+        
+        except Exception as e:
+            raise Exception(f"Fehler beim Verbessern des Einsatzberichts: {str(e)}")
+    
+    def bericht_zusammenfassen(self, bericht: str) -> str:
+        """
+        Erstellt eine Zusammenfassung eines Einsatzberichts
+        
+        Args:
+            bericht: Der vollständige Einsatzbericht
+        
+        Returns:
+            Eine kurze Zusammenfassung
+        """
+        prompt = f"""Erstelle eine kurze Zusammenfassung (max. 3-4 Sätze) des folgenden Einsatzberichts:
+
+{bericht}"""
+
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=256,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            return message.content[0].text
+        
+        except Exception as e:
+            raise Exception(f"Fehler beim Zusammenfassen des Einsatzberichts: {str(e)}")
+
+    def scenario_erfinden(self, krankheitsbild: str) -> dict:
+        """
+        Erfindet ein realistisches Rettungsdienst-Einsatzszenario und prüft
+        die medizinische Korrektheit gegen aktuelle EMS-Leitlinien.
+
+        Args:
+            krankheitsbild: Bezeichnung des Krankheitsbilds / Einsatzszenarios
+
+        Returns:
+            dict mit allen Einsatz-Feldern (stichwort, abcde, opqrst, sampler, medikamente etc.)
+        """
+        prompt = (
+            f"Du bist ein erfahrener Rettungsassistent/Notfallsanitäter. "
+            f"Erfinde ein REALISTISCHES und MEDIZINISCH KORREKTES Rettungsdienst-Einsatzszenario "
+            f"für folgendes Krankheitsbild:\n\n{krankheitsbild}\n\n"
+            f"ANFORDERUNGEN:\n"
+            f"- Alle Vitalwerte, Laborwerte und Befunde müssen für dieses Krankheitsbild typisch und realistisch sein\n"
+            f"- Medikamente und Dosierungen müssen den aktuellen Leitlinien entsprechen "
+            f"(ERC-Leitlinien 2021, ACLS, DGAI-SOPs, Bundeseinheitlicher Curriculum Notfallsanitäter)\n"
+            f"- NACA-Score, GCS und VAS müssen zur klinischen Situation passen\n"
+            f"- Das EKG-Befund (falls relevant) muss zum Krankheitsbild passen\n"
+            f"- Realistische Patientendemographie (Alter, Geschlecht, Vorerkrankungen)\n\n"
+            f"Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
+            f'{{\n'
+            f'  "krankheitsbild": "{krankheitsbild}",\n'
+            f'  "stichwort": "RTW X – Kategorie: Kurzbezeichnung",\n'
+            f'  "datum": "TT.MM.JJJJ",\n'
+            f'  "uhrzeit": "HH:MM",\n'
+            f'  "rettungsmittel": "z.B. RTW, NEF",\n'
+            f'  "medikamente": "Wirkstoff Dosis Route, ...",\n'
+            f'  "abcde": {{\n'
+            f'    "a": "Atemweg-Befund",\n'
+            f'    "b": "SpO2 XX%, AF XX/min, Atemgeräusch",\n'
+            f'    "c": "RR XXX/XX mmHg, HF XX/min, Rekapillarisierung",\n'
+            f'    "d": "GCS XX (A+V+M), BZ X.X mmol/l, Pupillen",\n'
+            f'    "e": "Temp XX.X°C, Haut, Bodycheck-Befund"\n'
+            f'  }},\n'
+            f'  "opqrst": {{\n'
+            f'    "o": "Onset",\n'
+            f'    "p": "Provocation",\n'
+            f'    "q": "Quality",\n'
+            f'    "r": "Radiation",\n'
+            f'    "s": "X/10",\n'
+            f'    "t": "Time"\n'
+            f'  }},\n'
+            f'  "sampler": {{\n'
+            f'    "s": "Symptome",\n'
+            f'    "a": "Allergien",\n'
+            f'    "m": "Dauermedikation",\n'
+            f'    "p": "Vorerkrankungen",\n'
+            f'    "l": "Letzte Mahlzeit",\n'
+            f'    "e": "Ereignisanamnese",\n'
+            f'    "r": "Risikofaktoren"\n'
+            f'  }},\n'
+            f'  "naca": "Ziffer – Begründung",\n'
+            f'  "gcs": "AX VX MX = XX",\n'
+            f'  "vas": "X/10",\n'
+            f'  "ekg": "EKG-Befund oder nicht erhoben",\n'
+            f'  "zusatz": "Patientenalter, Geschlecht, besondere Situation, Angehörige etc.",\n'
+            f'  "verifikation": "Kurze Bestätigung der medizinischen Korrektheit inkl. Leitlinienreferenz"\n'
+            f'}}'
+        )
+        import json, re
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = message.content[0].text.strip()
+            # JSON aus Antwort extrahieren (auch wenn Markdown-Blöcke vorhanden)
+            m = re.search(r'\{.*\}', text, re.DOTALL)
+            if m:
+                text = m.group()
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            raise Exception(f"Fehler beim Parsen der KI-Antwort: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Fehler beim Erfinden des Szenarios: {str(e)}")

@@ -11,9 +11,10 @@ a = Analysis(
     pathex=[r'E:\mines schummel'],
     binaries=[],
     datas=[
+        # Konfigurationsdatei (mit API Key) – wird beim Erststart neben die EXE kopiert
+        (r'config.ini', '.'),
         # Konfigurationsvorlage
-        (r'config.ini.example', '.'),
-        # Beispiel-PDFs
+        (r'config.ini.example', '.'),        # Beispiel-PDFs
         (r'examples', 'examples'),
         # certifi CA-Zertifikate (benötigt von httpx/anthropic)
         *collect_data_files('certifi'),

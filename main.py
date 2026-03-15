@@ -34,12 +34,22 @@ def main():
     # Konfiguration laden
     config = configparser.ConfigParser()
     config_path = os.path.join(base, 'config.ini')
-    # Falls config.ini noch nicht existiert (Erststart nach EXE-Verteilung), Example kopieren
+    # Falls config.ini noch nicht neben der EXE liegt: aus dem Bundle (_MEIPASS) kopieren
     if not os.path.exists(config_path):
-        example_path = os.path.join(base, 'config.ini.example')
-        if os.path.exists(example_path):
-            import shutil
-            shutil.copy(example_path, config_path)
+        import shutil
+        bundled = None
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            for name in ('config.ini', 'config.ini.example'):
+                candidate = os.path.join(sys._MEIPASS, name)
+                if os.path.exists(candidate):
+                    bundled = candidate
+                    break
+        else:
+            example_path = os.path.join(base, 'config.ini.example')
+            if os.path.exists(example_path):
+                bundled = example_path
+        if bundled:
+            shutil.copy(bundled, config_path)
     config.read(config_path, encoding='utf-8')
 
     # API Key: Umgebungsvariable hat Vorrang, dann config.ini

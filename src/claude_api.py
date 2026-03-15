@@ -562,6 +562,83 @@ class ClaudeAPIHandler:
         except Exception as e:
             raise Exception(f"Fehler beim Ausformulieren der Reflexion: {str(e)}")
 
+    def vitalwerte_generieren(self, kontext: str) -> dict:
+        """
+        Generiert plausible Vitalwerte basierend auf dem gegebenen Einsatzkontext.
+
+        Returns:
+            dict mit Schlüsseln: rr, hf, spo2, spco, af, bz, temp, gcs, etco2
+        """
+        import json, re as _re
+        prompt = (
+            "Du bist ein erfahrener Notfallsanitäter. "
+            "Generiere REALISTISCH und LEITLINIENGERECHT passende Vitalwerte für folgenden Einsatzkontext:\n\n"
+            f"{kontext}\n\n"
+            "Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
+            '{\n'
+            '  "rr": "sys/dia z.B. 130/85",\n'
+            '  "hf": "z.B. 92",\n'
+            '  "spo2": "z.B. 94",\n'
+            '  "spco": "z.B. 0",\n'
+            '  "af": "z.B. 18",\n'
+            '  "bz": "z.B. 5.8",\n'
+            '  "temp": "z.B. 36.8",\n'
+            '  "gcs": "z.B. A4 V5 M6 = 15",\n'
+            '  "etco2": "z.B. 38 oder leer"\n'
+            '}'
+        )
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = message.content[0].text.strip()
+            m = _re.search(r'\{.*\}', text, _re.DOTALL)
+            if m:
+                return json.loads(m.group(0))
+            return json.loads(text)
+        except Exception as e:
+            raise Exception(f"Fehler beim Generieren der Vitalwerte: {str(e)}")
+
+    def schemata_generieren(self, kontext: str) -> dict:
+        """
+        Generiert plausible xABCDE-, OPQRST- und SAMPLER-Schemata basierend auf dem Kontext.
+
+        Returns:
+            dict mit Schlüsseln 'xABCDE', 'OPQRST', 'SAMPLER', je ein dict mit Buchstaben-Schlüsseln
+        """
+        import json, re as _re
+        prompt = (
+            "Du bist ein erfahrener Notfallsanitäter. "
+            "Fülle die klinischen Schemata REALISTISCH und LEITLINIENGERECHT für folgenden Einsatzkontext:\n\n"
+            f"{kontext}\n\n"
+            "Regeln:\n"
+            "- xABCDE NUR qualitative Befunde, KEINE Messwerte (kein RR, HF, SpO2, BZ, GCS-Zahl, Temp)\n"
+            "- X-Feld nur wenn relevante Blutung/Tourniquet vorhanden, sonst leer lassen\n"
+            "- Felder kurz halten (max. 12 Wörter je Buchstabe)\n"
+            "- KEIN Markdown, keine Aufzählungszeichen\n\n"
+            "Antworte AUSSCHLIESSLICH mit einem gültigen JSON-Objekt:\n"
+            '{\n'
+            '  "xABCDE": {"x":"","a":"","b":"","c":"","d":"","e":""},\n'
+            '  "OPQRST": {"o":"","p":"","q":"","r":"","s":"","t":""},\n'
+            '  "SAMPLER": {"s":"","a":"","m":"","p":"","l":"","e":"","r":""}\n'
+            '}'
+        )
+        try:
+            message = self.client.messages.create(
+                model="claude-sonnet-4-5-20250929",
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            text = message.content[0].text.strip()
+            m = _re.search(r'\{.*\}', text, _re.DOTALL)
+            if m:
+                return json.loads(m.group(0))
+            return json.loads(text)
+        except Exception as e:
+            raise Exception(f"Fehler beim Generieren der Schemata: {str(e)}")
+
     def scenario_erfinden(self, krankheitsbild: str) -> dict:
         """
         Erfindet ein realistisches Rettungsdienst-Einsatzszenario und prüft

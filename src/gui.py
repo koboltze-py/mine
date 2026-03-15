@@ -655,6 +655,40 @@ class ReflexionWorker(QThread):
             self.error.emit(str(e))
 
 
+class VitalwerteKIWorker(QThread):
+    """Worker Thread: Kontext → KI-generierte Vitalwerte"""
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(self, claude_handler, kontext: str):
+        super().__init__()
+        self.claude_handler = claude_handler
+        self.kontext = kontext
+
+    def run(self):
+        try:
+            self.finished.emit(self.claude_handler.vitalwerte_generieren(self.kontext))
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class SchemataKIWorker(QThread):
+    """Worker Thread: Kontext → KI-generierte Schemata (xABCDE / OPQRST / SAMPLER)"""
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(self, claude_handler, kontext: str):
+        super().__init__()
+        self.claude_handler = claude_handler
+        self.kontext = kontext
+
+    def run(self):
+        try:
+            self.finished.emit(self.claude_handler.schemata_generieren(self.kontext))
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 KRANKHEITSBILDER = [
     "Reanimation – Asystolie",
     "Reanimation – Kammerflimmern (VF / pulslose VT)",
@@ -1315,6 +1349,30 @@ class MainWindow(QMainWindow):
         self.new_zusatz.setPlaceholderText(
             "Weitere Hintergrundinformationen, Patientendetails, besondere Umstände …")
         extra_form.addRow("Kontext / Zusatz:", self.new_zusatz)
+        # KI-Buttons für Vitalwerte und Schemata aus Kontext
+        _kontext_ki_row = QHBoxLayout()
+        _ki_vw_new_btn = QPushButton("🤖  Vitalwerte generieren")
+        _ki_vw_new_btn.setToolTip(
+            "Claude generiert passende Vitalwerte anhand des eingetragenen Kontexts.\n"
+            "Vorhandene Werte werden überschrieben.")
+        _ki_vw_new_btn.setStyleSheet(
+            "QPushButton{border:1px solid #1976D2;color:#1976D2;border-radius:3px;"
+            "padding:3px 10px;font-size:11px;background:transparent;font-weight:bold;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _ki_vw_new_btn.clicked.connect(self._ki_vitalwerte_new)
+        _kontext_ki_row.addWidget(_ki_vw_new_btn)
+        _ki_schema_new_btn = QPushButton("🤖  Schemata generieren  (xABCDE / OPQRST / SAMPLER)")
+        _ki_schema_new_btn.setToolTip(
+            "Claude füllt xABCDE-, OPQRST- und SAMPLER-Schemata anhand des Kontexts.\n"
+            "Vorhandene Einträge werden überschrieben.")
+        _ki_schema_new_btn.setStyleSheet(
+            "QPushButton{border:1px solid #1976D2;color:#1976D2;border-radius:3px;"
+            "padding:3px 10px;font-size:11px;background:transparent;font-weight:bold;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _ki_schema_new_btn.clicked.connect(self._ki_schemata_new)
+        _kontext_ki_row.addWidget(_ki_schema_new_btn)
+        _kontext_ki_row.addStretch()
+        extra_form.addRow("", _kontext_ki_row)
         self.new_reflexion = QTextEdit()
         self.new_reflexion.setMaximumHeight(80)
         self.new_reflexion.setPlaceholderText(
@@ -1802,6 +1860,27 @@ class MainWindow(QMainWindow):
         _kontext_popup_btn.clicked.connect(
             lambda: self._popup_text_edit(self.edit_kontext, "KI-Kontext bearbeiten"))
         _kontext_vbox.addWidget(_kontext_popup_btn)
+        # KI-Buttons für Vitalwerte und Schemata aus Kontext
+        _edit_ki_vw_btn = QPushButton("🤖  Vitalwerte aus Kontext generieren")
+        _edit_ki_vw_btn.setToolTip(
+            "Claude generiert passende Vitalwerte anhand des eingetragenen Kontexts.\n"
+            "Vorhandene Werte werden überschrieben.")
+        _edit_ki_vw_btn.setStyleSheet(
+            "QPushButton{border:1px solid #1976D2;color:#1976D2;border-radius:3px;"
+            "padding:3px 10px;font-size:11px;background:transparent;font-weight:bold;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _edit_ki_vw_btn.clicked.connect(self._ki_vitalwerte_edit)
+        _kontext_vbox.addWidget(_edit_ki_vw_btn)
+        _edit_ki_schema_btn = QPushButton("🤖  Schemata aus Kontext generieren  (xABCDE / OPQRST / SAMPLER)")
+        _edit_ki_schema_btn.setToolTip(
+            "Claude füllt xABCDE-, OPQRST- und SAMPLER-Schemata anhand des Kontexts.\n"
+            "Vorhandene Schema-Einträge werden überschrieben.")
+        _edit_ki_schema_btn.setStyleSheet(
+            "QPushButton{border:1px solid #1976D2;color:#1976D2;border-radius:3px;"
+            "padding:3px 10px;font-size:11px;background:transparent;font-weight:bold;}"
+            "QPushButton:hover{background:#1976D2;color:#fff;}")
+        _edit_ki_schema_btn.clicked.connect(self._ki_schemata_edit)
+        _kontext_vbox.addWidget(_edit_ki_schema_btn)
 
         form_layout.addRow("Bericht-ID:", self.edit_id)
         form_layout.addRow("Titel:", self.edit_titel)
@@ -2315,6 +2394,109 @@ class MainWindow(QMainWindow):
         self._refl_worker_new.error.connect(
             lambda e: QMessageBox.critical(self, "Fehler", e))
         self._refl_worker_new.start()
+
+    def _ki_vitalwerte_new(self):
+        """KI generiert Vitalwerte aus dem Kontext im Neuer-Bericht-Tab."""
+        kontext = self.new_zusatz.toPlainText().strip()
+        if not kontext:
+            QMessageBox.warning(self, "Kein Kontext",
+                "Bitte zuerst einen Kontext / Zusatzinfo eintragen.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        progress = QProgressDialog("KI generiert Vitalwerte …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._vw_ki_worker_new = VitalwerteKIWorker(self.claude, kontext)
+        def _on_vw_done(data):
+            progress.close()
+            self.new_vitalwerte_widget.clear()
+            self.new_vitalwerte_widget.set_vitalwerte(data)
+        self._vw_ki_worker_new.finished.connect(_on_vw_done)
+        self._vw_ki_worker_new.error.connect(
+            lambda e: (progress.close(), QMessageBox.critical(self, "Fehler", e)))
+        self._vw_ki_worker_new.start()
+
+    def _ki_schemata_new(self):
+        """KI generiert xABCDE/OPQRST/SAMPLER aus dem Kontext im Neuer-Bericht-Tab."""
+        kontext = self.new_zusatz.toPlainText().strip()
+        if not kontext:
+            QMessageBox.warning(self, "Kein Kontext",
+                "Bitte zuerst einen Kontext / Zusatzinfo eintragen.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        progress = QProgressDialog("KI generiert Schemata …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._schema_ki_worker_new = SchemataKIWorker(self.claude, kontext)
+        def _on_schema_done(data):
+            progress.close()
+            _name_map = {'xABCDE': 'xABCDE', 'OPQRST': 'OPQRST', 'SAMPLER': 'SAMPLER'}
+            for schema_key, vals in data.items():
+                widget = self.schema_widgets.get(_name_map.get(schema_key, schema_key))
+                if widget and isinstance(vals, dict):
+                    widget.clear_values()
+                    widget.set_values(vals)
+        self._schema_ki_worker_new.finished.connect(_on_schema_done)
+        self._schema_ki_worker_new.error.connect(
+            lambda e: (progress.close(), QMessageBox.critical(self, "Fehler", e)))
+        self._schema_ki_worker_new.start()
+
+    def _ki_vitalwerte_edit(self):
+        """KI generiert Vitalwerte aus dem Kontext im Bearbeiten-Tab."""
+        kontext = self.edit_kontext.toPlainText().strip()
+        if not kontext:
+            QMessageBox.warning(self, "Kein Kontext",
+                "Bitte zuerst einen Kontext eintragen.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        progress = QProgressDialog("KI generiert Vitalwerte …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._vw_ki_worker_edit = VitalwerteKIWorker(self.claude, kontext)
+        def _on_vw_done_edit(data):
+            progress.close()
+            self.edit_vitalwerte_widget.clear()
+            self.edit_vitalwerte_widget.set_vitalwerte(data)
+        self._vw_ki_worker_edit.finished.connect(_on_vw_done_edit)
+        self._vw_ki_worker_edit.error.connect(
+            lambda e: (progress.close(), QMessageBox.critical(self, "Fehler", e)))
+        self._vw_ki_worker_edit.start()
+
+    def _ki_schemata_edit(self):
+        """KI generiert xABCDE/OPQRST/SAMPLER aus dem Kontext im Bearbeiten-Tab."""
+        import json as _json
+        kontext = self.edit_kontext.toPlainText().strip()
+        if not kontext:
+            QMessageBox.warning(self, "Kein Kontext",
+                "Bitte zuerst einen Kontext eintragen.")
+            return
+        if not self.claude:
+            QMessageBox.warning(self, "Kein API-Key", "Claude API ist nicht verfügbar.")
+            return
+        progress = QProgressDialog("KI generiert Schemata …", None, 0, 0, self)
+        progress.setWindowModality(Qt.WindowModal)
+        progress.show()
+        self._schema_ki_worker_edit = SchemataKIWorker(self.claude, kontext)
+        def _on_schema_done_edit(data):
+            progress.close()
+            # Bestehende Schema-Daten laden und mit neuen zusammenführen
+            try:
+                existing = _json.loads(self._edit_abcde_json or '{}')
+            except Exception:
+                existing = {}
+            existing.update(data)
+            self._edit_abcde_json = _json.dumps(existing, ensure_ascii=False)
+            self._update_schema_summary_label(existing)
+        self._schema_ki_worker_edit.finished.connect(_on_schema_done_edit)
+        self._schema_ki_worker_edit.error.connect(
+            lambda e: (progress.close(), QMessageBox.critical(self, "Fehler", e)))
+        self._schema_ki_worker_edit.start()
 
     def _ki_reflexion_edit(self):
         """KI formuliert Reflexion aus Stichwörtern im Bearbeiten-Tab."""

@@ -505,8 +505,9 @@ class ClaudeAPIHandler:
             f"- Das EKG-Befund (falls relevant) muss zum Krankheitsbild passen\n"
             f"- Realistische Patientendemographie (Alter, Geschlecht, Vorerkrankungen)\n"
             f"- ABCDE/OPQRST/SAMPLER-Felder KURZ halten: max. 10\u201312 W\u00f6rter je Buchstabe (Stichworte, keine langen S\u00e4tze)\n"
-            f"- ABCDE NUR qualitative Befunde (A/B/C/D/E): KEINE Zahlen wie RR, HF, SpO2, BZ, Temp, GCS \u2013 diese kommen ausschlie\u00dflich in 'vitalwerte'\n\n"
-            f"Antworte AUSSCHLIESSLICH mit einem g\u00fcltigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
+            f"- ABCDE NUR qualitative Befunde (A/B/C/D/E): KEINE Zahlen wie RR, HF, SpO2, BZ, Temp, GCS – diese kommen ausschließlich in 'vitalwerte'\n"
+            f"- X-Feld (Exsanguination): nur ausfüllen wenn relevante Blutung / Maßnahmen (Tourniquet etc.) vorhanden, sonst leer lassen\n\n"
+            f"Antworte AUSSCHLIEßLICH mit einem gültigen JSON-Objekt, ohne Markdown, ohne weiteren Text:\n"
             f'{{\n'
             f'  "krankheitsbild": "{krankheitsbild}",\n'
             f'  "stichwort": "RTW X – Kategorie: Kurzbezeichnung",\n'
@@ -515,6 +516,7 @@ class ClaudeAPIHandler:
             f'  "rettungsmittel": "z.B. RTW, NEF",\n'
             f'  "medikamente": "Wirkstoff Dosis Route, ...",\n'
             f'  "abcde": {{\n'
+            f'    "x": "Exsanguination / Maßnahme bei Blutung oder leer lassen",\n'
             f'    "a": "Atemweg qualitativ (frei/verlegt/gesichert) - KEINE Messwerte",\n'
             f'    "b": "Atemger\u00e4usch, Ventilationsqualit\u00e4t - KEIN SpO2/AF",\n'
             f'    "c": "Kreislaufbefund qualitativ, Rekapillarisierung - KEIN RR/HF",\n'

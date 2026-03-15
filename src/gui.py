@@ -615,7 +615,8 @@ class BerichtErfindenDialog(QDialog):
             f"🚑 Rettungsmittel: {data.get('rettungsmittel', '')}",
             f"💊 Medikamente:    {data.get('medikamente', '')}",
             "",
-            "─ ABCDE ─",
+            "─ xABCDE ─",
+            f"  X: {ab.get('x','')}",
             f"  A: {ab.get('a','')}",
             f"  B: {ab.get('b','')}",
             f"  C: {ab.get('c','')}",
@@ -1881,7 +1882,9 @@ class MainWindow(QMainWindow):
                 self.new_uhrzeit.setTime(qt)
         # Komplexe Schema-Widgets füllen
         for name, widget in self.schema_widgets.items():
-            sub = data.get(name.lower(), {})
+            # xABCDE-Widget bekommt Daten aus 'abcde'-Key (Claude-API-Rückgabe)
+            api_key = 'abcde' if name == 'xABCDE' else name.lower()
+            sub = data.get(api_key, {})
             widget.clear_values()
             if sub:
                 widget.set_values(sub)

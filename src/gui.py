@@ -377,11 +377,10 @@ class SchemaWidget(QGroupBox):
             inp.textChanged.connect(lambda text, w=self: w.setChecked(True) if text.strip() else None)
             form.addRow(label + ":", inp)
             self.inputs[key] = inp
-        # Always keep child widgets enabled so user can type without clicking checkbox first
-        self.toggled.connect(self._on_toggled)
 
-    def _on_toggled(self, checked: bool):
-        """Re-enable all inputs when group is toggled (PySide6 disables them when unchecked)."""
+    def setChecked(self, checked: bool):
+        """Override: PySide6 disables all children on setChecked(False); we immediately re-enable them."""
+        super().setChecked(checked)
         for inp in self.inputs.values():
             inp.setEnabled(True)
 

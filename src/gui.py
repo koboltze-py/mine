@@ -381,7 +381,7 @@ class SchemaWidget(QGroupBox):
     def setChecked(self, checked: bool):
         """Override: PySide6 disables all children on setChecked(False); we immediately re-enable them."""
         super().setChecked(checked)
-        for inp in self.inputs.values():
+        for inp in getattr(self, 'inputs', {}).values():
             inp.setEnabled(True)
 
     def schema_text(self):

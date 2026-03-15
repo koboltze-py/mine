@@ -391,6 +391,8 @@ class SchemaWidget(QGroupBox):
         parts = []
         for key, label, _ in self._defs:
             val = self.inputs[key].text().strip()
+            if not val and key == 'x' and self.title().startswith('xABCDE'):
+                val = 'keine kritischen Blutungen'
             parts.append(f"{key.upper()}= {val}" if val else f"{key.upper()}= ")
         return self.title() + "\n" + "\n".join(parts)
 
@@ -2192,6 +2194,8 @@ class MainWindow(QMainWindow):
         for name, (cb, inp) in self.schema_simple.items():
             if inp.text().strip():
                 schema_data[name] = inp.text().strip()
+        if 'xABCDE' in schema_data and not schema_data['xABCDE'].get('x', '').strip():
+            schema_data['xABCDE']['x'] = 'keine kritischen Blutungen'
         abcde_json = _json.dumps(schema_data, ensure_ascii=False)
         vitalwerte_json = _json.dumps(self.new_vitalwerte_widget.get_vitalwerte(), ensure_ascii=False)
 

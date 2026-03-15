@@ -155,6 +155,8 @@ class ReportGenerator:
         # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
             abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
+            if 'xABCDE' in abcde_data and not str(abcde.get('x', '')).strip():
+                abcde = dict(abcde, x='keine kritischen Blutungen')
             rows = [[Paragraph(f'<b>{k.upper()}=</b>', body_style),
                      Paragraph(str(v), body_style)]
                     for k, v in abcde.items() if str(v).strip()]
@@ -286,6 +288,8 @@ class ReportGenerator:
         # ABCDE-Tabelle inline an der Stelle der alten ABCDE-Zeilen
         if abcde_data:
             abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
+            if 'xABCDE' in abcde_data and not str(abcde.get('x', '')).strip():
+                abcde = dict(abcde, x='keine kritischen Blutungen')
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if abcde_rows:
                 h = doc.add_heading('xABCDE-Schema', 2)
@@ -402,6 +406,8 @@ class ReportGenerator:
         # ABCDE-Schema inline
         if abcde_data:
             abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
+            if 'xABCDE' in abcde_data and not str(abcde.get('x', '')).strip():
+                abcde = dict(abcde, x='keine kritischen Blutungen')
             abcde_rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if abcde_rows:
                 doc.text.addElement(H(outlinelevel=2, text="xABCDE-Schema"))
@@ -458,6 +464,8 @@ class ReportGenerator:
         abcde_lines = []
         if abcde_data:
             abcde = abcde_data.get('xABCDE', abcde_data.get('ABCDE', {}))
+            if 'xABCDE' in abcde_data and not str(abcde.get('x', '')).strip():
+                abcde = dict(abcde, x='keine kritischen Blutungen')
             rows = [(k.upper() + '=', str(v)) for k, v in abcde.items() if str(v).strip()]
             if rows:
                 abcde_lines = ["xABCDE-Schema:"] + [f"  {k}  {v}" for k, v in rows] + [""]

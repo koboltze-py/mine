@@ -1704,6 +1704,14 @@ class MainWindow(QMainWindow):
         open_pdf_btn.setToolTip("PDF des aktuell geladenen Berichts im Standardprogramm öffnen")
         open_pdf_btn.clicked.connect(self._open_selected_pdf)
         list_top.addWidget(open_pdf_btn)
+        delete_edit_btn = QPushButton("🗑 Bericht löschen")
+        delete_edit_btn.setToolTip("Markierten Bericht dauerhaft löschen")
+        delete_edit_btn.setStyleSheet(
+            "QPushButton{border:1px solid #c62828;color:#c62828;border-radius:3px;"
+            "padding:3px 10px;background:transparent;font-weight:bold;}"
+            "QPushButton:hover{background:#c62828;color:#fff;}")
+        delete_edit_btn.clicked.connect(self._delete_selected_edit_bericht)
+        list_top.addWidget(delete_edit_btn)
         refresh_edit_btn = QPushButton("🔄 Aktualisieren")
         refresh_edit_btn.setToolTip("Berichtliste neu laden")
         refresh_edit_btn.clicked.connect(self.load_edit_list)
@@ -1715,6 +1723,7 @@ class MainWindow(QMainWindow):
         self.edit_list_table.setHorizontalHeaderLabels(["ID", "Titel", "Alarmierung", "Erstellt am"])
         self.edit_list_table.horizontalHeader().setStretchLastSection(True)
         self.edit_list_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.edit_list_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.edit_list_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.edit_list_table.setAlternatingRowColors(True)
         self.edit_list_table.verticalHeader().setDefaultSectionSize(28)
@@ -2359,6 +2368,41 @@ class MainWindow(QMainWindow):
             f"Details für {count} Medikament(e) wurden eingetragen.\n"
             "Öffne den ℹ Details-Button einer Zeile, um alles zu prüfen.")
 
+    def _delete_selected_edit_bericht(self):
+        """Löscht den/die in edit_list_table markierten Bericht(e)."""
+        selected_rows = self.edit_list_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "Hinweis", "Bitte zuerst einen Bericht in der Liste markieren.")
+            return
+        # Unique Zeilen ermitteln (jede Zelle zählt einzeln)
+        rows = sorted({idx.row() for idx in self.edit_list_table.selectedIndexes()})
+        ids = [int(self.edit_list_table.item(r, 0).text()) for r in rows]
+        count = len(ids)
+        msg = (f"Bericht {ids[0]} wirklich dauerhaft löschen?"
+               if count == 1
+               else f"{count} Berichte wirklich dauerhaft löschen?")
+        reply = QMessageBox.question(
+            self, "Bericht löschen", msg,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        for bericht_id in ids:
+            self.db.bericht_loeschen(bericht_id)
+        self.load_edit_list()
+        self.load_berichte()  # Übersichts-Tab synchron halten
+        # Formular leeren falls der gelöschte Bericht geladen war
+        if hasattr(self, '_current_edit_id') and self._current_edit_id in ids:
+            self._edit_bericht_banner.setText(
+                "⬆  Bericht wurde gelöscht. Bitte oben einen anderen Bericht auswählen.")
+            self.edit_titel.clear()
+            self.edit_thema.clear()
+            self.edit_inhalt.clear()
+            self._current_edit_id = None
+        QMessageBox.information(
+            self, "Gelöscht",
+            f"{'Bericht' if count == 1 else str(count) + ' Berichte'} wurde(n) gelöscht.")
+
     def load_edit_list(self):
         """Aktualisiert die Bericht-Liste im Ansehen/Bearbeiten-Tab"""
         self.edit_list_table.setRowCount(0)
@@ -2380,6 +2424,7 @@ class MainWindow(QMainWindow):
         bericht_id = int(self.edit_list_table.item(row, 0).text())
         bericht = self.db.bericht_abrufen(bericht_id)
         if bericht:
+            self._current_edit_id = bericht_id
             self._edit_bericht_banner.setText(
                 f"✏\ufe0f  Geladener Bericht:  ID {bericht['id']}  –  {bericht['titel']}  "
                 f"│  Alarmierung: {bericht['thema']}")
